@@ -143,6 +143,7 @@ ul.tight li{margin-bottom:4px}
 <div id="modal"></div>
 <div id="toast"></div>
 <input type="file" id="foto-in" accept="image/*" multiple hidden>
+<input type="file" id="foto-cam" accept="image/*" capture="environment" hidden>
 
 <script src="supabase.js"></script>
 <script>
@@ -863,7 +864,14 @@ const ACT = {
   toggle(b){ const id=b.dataset.z; if(colapsadas.has(id)) colapsadas.delete(id); else colapsadas.add(id); render(true); },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
   dell(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z); (z.lineas.find(l=>l.id===b.dataset.l)?.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
-  addfoto(b){ fotoZona=b.dataset.z; fotoLinea=b.dataset.l||null; $('#foto-in').click(); },
+  addfoto(b){
+    fotoZona=b.dataset.z; fotoLinea=b.dataset.l||null;
+    modal(`<div class="mh"><h2>Agregar foto</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+     <button class="btn btn-primary big" data-act="fotocam">📷 Tomar foto ahora</button>
+     <button class="btn big" data-act="fotogal">🖼 Elegir de la galería</button>`);
+  },
+  fotocam(){ closeModal(); $('#foto-cam').click(); },
+  fotogal(){ closeModal(); $('#foto-in').click(); },
   delfoto(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z), ln=b.dataset.l?z.lineas.find(l=>l.id===b.dataset.l):null; if(ln) ln.fotos=(ln.fotos||[]).filter(f=>f!==b.dataset.f); else z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
   dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); }); S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
   delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); q.zonas.forEach(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
@@ -928,7 +936,7 @@ document.addEventListener('change',e=>{
     const q=curQ();
     if(t.value==='rechazada'){ modal(`<div class="mh"><h2>¿Por qué se perdió?</h2><button class="chip" data-act="mclose">Cancelar</button></div>${['Precio','Tiempo','Eligió a otro','Sin respuesta','Otro'].map(m=>`<button class="btn" data-act="motivo" data-m="${m}">${m}</button>`).join('')}`); t.value=q.estado; return; }
     q.estado=t.value; save(); render(true);
-  } else if(t.id==='foto-in'){ subirFotos(t.files); t.value=''; }
+  } else if(t.id==='foto-in'||t.id==='foto-cam'){ subirFotos(t.files); t.value=''; }
   else if(t.dataset.rol){ cambiarRol(t); }
 });
 async function cambiarRol(t){

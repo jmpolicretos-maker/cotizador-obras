@@ -40,6 +40,14 @@ label{display:block;font-size:13px;color:var(--mut);margin-bottom:10px}
 input,select,textarea{display:block;width:100%;margin-top:4px;padding:12px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;min-height:48px}
 textarea{min-height:90px;resize:vertical}
 .lock{pointer-events:none;opacity:.6}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{flex:1;min-height:48px;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:12px;font:inherit;font-weight:700;cursor:pointer}
+.tabs button.on{background:var(--pri);color:var(--pri-ink);border-color:var(--pri)}
+.lev-info{background:var(--soft);border-radius:10px;padding:10px;margin-bottom:10px;font-size:14px}
+.medida{font-size:18px}
+.exrow{display:grid;grid-template-columns:minmax(0,1fr) 76px 68px 44px;gap:6px;margin-bottom:6px;align-items:center}
+.exrow input,.exrow select{width:100%;min-width:0;margin:0;padding:10px 8px}
+.exrow input[type=number]{text-align:right}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-offset:0}
 .btn{display:block;width:100%;min-height:48px;padding:12px 16px;margin:0 0 12px;font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:center;text-decoration:none;cursor:pointer}
 .btn-primary{background:var(--pri);color:var(--pri-ink);border-color:var(--pri)}
@@ -136,7 +144,7 @@ ul.tight li{margin-bottom:4px}
 <div id="app"></div>
 <nav class="bottom" id="nav">
   <a href="#/home" data-nav="home"><span>🏠</span>Inicio</a>
-  <a href="#/cots" data-nav="cots"><span>📋</span>Cotizaciones</a>
+  <a href="#/cots" data-nav="cots"><span>📋</span>Proyectos</a>
   <a href="#/cat" data-nav="cat"><span>🧱</span>Catálogo</a>
   <a href="#/set" data-nav="set"><span>⚙️</span>Ajustes</a>
 </nav>
@@ -150,7 +158,7 @@ ul.tight li{margin-bottom:4px}
 'use strict';
 /* ================= Constantes =================
    El catálogo, los paquetes y los precios iniciales (estimaciones) viven en la nube. */
-const ESTADOS = {borrador:'Borrador',enviada:'Enviada',aceptada:'Aceptada',en_obra:'En obra',terminada:'Terminada',rechazada:'Rechazada'};
+const ESTADOS = {borrador:'En preparación',enviada:'Enviada',aceptada:'Aceptada',en_obra:'En obra',terminada:'Terminada',rechazada:'Rechazada'};
 const UNIT_INT = ['pza','pto','saco','viaje','servicio','día'];
 const UNIDADES = ['m²','ml','pza','pto','saco','viaje','servicio','día','m³','kg'];
 const CATS = ['Demolición','Albañilería','Acabados','Pintura','Plomería','Electricidad','Cocinas','Por tiempo','Varios'];
@@ -438,7 +446,7 @@ const zraw = z=>z.lineas.filter(l=>!l.opcional).reduce((s,l)=>s+l.qty*l.precio,0
 
 function nuevaCot(){
   const q = {id:uid(),folio:'C-nueva',fecha:new Date().toISOString(),estado:'borrador',
-    cliente:{nombre:'',tel:'',dir:''},titulo:'',zonas:[{id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''}],
+    cliente:{nombre:'',tel:'',dir:''},titulo:'',lev:{areas:[],notas:'',fotos:[]},zonas:[{id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''}],
     imprevistos:S.config.imprevistos,descuento:0,supuestos:S.config.supuestos};
   S.cotizaciones.unshift(q); save(); return q;
 }
@@ -483,8 +491,64 @@ function aprender(q){
 /* ================= Navegación ================= */
 const route = ()=>{ const [,v='home',id] = location.hash.split('/'); return {v,id}; };
 const curQ = ()=>S.cotizaciones.find(x=>x.id===route().id);
-let filtro='todas', catQ='', pickAdded=0, fotoZona=null, fotoLinea=null, pickZona=null;
+let filtro='todas', catQ='', pickAdded=0, fotoZona=null, fotoLinea=null, fotoArea=null, fotoGen=false, pickZona=null;
 const colapsadas = new Set();
+const tabProy = {};
+const TIPOS = {
+  ventana:{n:'Ventana',ic:'🪟',campos:[['ancho','Ancho (m)'],['alto','Alto (m)'],['cant','Piezas iguales']],def:{cant:1}},
+  muro:{n:'Muro',ic:'🧱',campos:[['largo','Largo (m)'],['alto','Alto (m)']]},
+  piso:{n:'Piso / cuarto',ic:'⬜',campos:[['largo','Largo (m)'],['ancho','Ancho (m)']]},
+  bano:{n:'Baño',ic:'🚿',campos:[['largo','Largo (m)'],['ancho','Ancho (m)'],['alto','Alto (m)']]},
+  cocina:{n:'Cocina',ic:'🍳',campos:[['ml','Metros lineales de cocina'],['alto','Alto del muro (m)']]},
+  otro:{n:'Otra área',ic:'📐',campos:[]},
+};
+const PAQ_TIPO = {ventana:'ventana',muro:'muropint',piso:'piso',bano:'bano',cocina:'cocina'};
+const num = v=>parseFloat(v)||0, r2 = x=>Math.round(x*100)/100;
+const levOf = q=>q.lev||{areas:[],notas:'',fotos:[]};
+function lev(q){ if(!q.lev) q.lev={areas:[],notas:'',fotos:[]}; return q.lev; }
+const areaDe = (q,z)=>z&&z.areaId?levOf(q).areas.find(a=>a.id===z.areaId)||null:null;
+function derivados(a){
+  const m=a.med||{}, d=[];
+  if(a.tipo==='ventana'){ const c=num(m.cant)||1; d.push({l:'Perímetro',v:r2(2*(num(m.ancho)+num(m.alto))*c),u:'ml'},{l:'Área',v:r2(num(m.ancho)*num(m.alto)*c),u:'m²'}); }
+  else if(a.tipo==='muro'){ d.push({l:'Área de muro',v:r2(num(m.largo)*num(m.alto)),u:'m²'},{l:'Largo',v:r2(num(m.largo)),u:'ml'}); }
+  else if(a.tipo==='piso'){ d.push({l:'Área de piso',v:r2(num(m.largo)*num(m.ancho)),u:'m²'},{l:'Perímetro',v:r2(2*(num(m.largo)+num(m.ancho))),u:'ml'}); }
+  else if(a.tipo==='bano'){ const per=2*(num(m.largo)+num(m.ancho)); d.push({l:'Piso',v:r2(num(m.largo)*num(m.ancho)),u:'m²'},{l:'Muros',v:r2(per*num(m.alto)),u:'m²'},{l:'Perímetro',v:r2(per),u:'ml'}); }
+  else if(a.tipo==='cocina'){ d.push({l:'Cocina',v:r2(num(m.ml)),u:'ml'},{l:'Muro de cocina',v:r2(num(m.ml)*num(m.alto)),u:'m²'}); }
+  (a.extras||[]).forEach(e=>{ if(num(e.valor)>0) d.push({l:e.etiqueta||'Medida',v:r2(num(e.valor)),u:e.unidad||'m'}); });
+  return d.filter(x=>x.v>0);
+}
+function clavesPaq(a){
+  const m=a.med||{}, k={};
+  if(a.tipo==='ventana'){ k.ancho=num(m.ancho); k.alto=num(m.alto); k.cant=num(m.cant)||1; }
+  else if(a.tipo==='muro'){ k.m2=k.enj=k.azu=r2(num(m.largo)*num(m.alto)); }
+  else if(a.tipo==='piso'){ k.m2=r2(num(m.largo)*num(m.ancho)); k.zo=r2(2*(num(m.largo)+num(m.ancho))); }
+  else if(a.tipo==='bano'){ const per=2*(num(m.largo)+num(m.ancho)); k.piso=r2(num(m.largo)*num(m.ancho)); k.muros=r2(per*num(m.alto)); }
+  else if(a.tipo==='cocina'){ k.ml=r2(num(m.ml)); }
+  return k;
+}
+function resumenHtml(a){
+  const T=TIPOS[a.tipo]||TIPOS.otro, m=a.med||{}, d=derivados(a);
+  const raw=T.campos.filter(([k])=>k!=='cant'&&num(m[k])>0).map(([k,l])=>esc(l.split(' (')[0])+' '+m[k]).join(', ');
+  const der=d.map(x=>esc(x.l)+' <b>'+x.v+' '+esc(x.u)+'</b>').join(' · ');
+  return (raw&&der)?raw+' → '+der:(der||raw||'Sin medidas todavía');
+}
+function infoArea(q,ar,z,ro){
+  if(!ar) return '';
+  const T=TIPOS[ar.tipo]||TIPOS.otro, f=ar.fotos||[];
+  return `<div class="lev-info"><div><b>${T.ic} Levantamiento:</b> ${resumenHtml(ar)}</div>
+   ${ar.notas?`<div style="white-space:pre-wrap;margin-top:4px">${esc(ar.notas)}</div>`:''}
+   ${f.length?`<div class="fotos">${f.map(x=>`<div><img data-foto="${x}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}
+   ${ro?'':`<button class="btn" style="margin:8px 0 0" data-act="paqarea" data-z="${z.id}">⚡ Cotizar con estas medidas</button>`}</div>`;
+}
+function etapa(q){ return tabProy[q.id] || (q.zonas.some(z=>z.lineas.length)?'cot':'lev'); }
+function estadoTxt(q){ return q.estado==='borrador' ? (q.zonas.some(z=>z.lineas.length)?'Cotizando':'Levantamiento') : ESTADOS[q.estado]; }
+function crearZonasDeAreas(q){
+  const L=lev(q); let n=0;
+  q.zonas=q.zonas.filter(z=>z.areaId||z.lineas.length||z.fotos.length||z.notas);
+  L.areas.forEach(a=>{ if(!q.zonas.some(z=>z.areaId===a.id)){ q.zonas.push({id:uid(),nombre:a.nombre,areaId:a.id,lineas:[],fotos:[],notas:''}); n++; } });
+  if(!q.zonas.length) q.zonas.push({id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''});
+  return n;
+}
 const NOMBRE_PAQ = {ventana:'Ventana',bano:'Baño',cocina:'Cocina',piso:'Piso',muropint:'Muros'};
 
 function render(keep){
@@ -509,7 +573,7 @@ window.addEventListener('hashchange',()=>{ closeModal(); render(); });
 
 /* ================= Vistas ================= */
 function rowQ(q){
-  return `<a class="row" href="#/cot/${q.id}"><div><b>${esc(q.cliente.nombre||'Sin nombre')}</b><small>${q.folio} · ${fechaTxt(q.fecha)}${q.titulo?' · '+esc(q.titulo):''}</small></div><div class="r">${S.rol==='albanil'?'':`<b>${money(tot(q).total)}</b>`}<span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></div></a>`;
+  return `<a class="row" href="#/cot/${q.id}"><div><b>${esc(q.cliente.nombre||'Sin nombre')}</b><small>${q.folio} · ${fechaTxt(q.fecha)}${q.titulo?' · '+esc(q.titulo):''}</small></div><div class="r">${S.rol==='albanil'?'':`<b>${money(tot(q).total)}</b>`}<span class="chip e-${q.estado}">${estadoTxt(q)}</span></div></a>`;
 }
 
 function vHome(){
@@ -517,7 +581,7 @@ function vHome(){
   const qs=S.cotizaciones, ab=qs.filter(q=>['borrador','enviada'].includes(q.estado)), ob=qs.filter(q=>['aceptada','en_obra'].includes(q.estado));
   const sum=a=>a.reduce((s,q)=>s+tot(q).total,0);
   let h=`<header class="hd"><div><h1>${esc(S.config.negocio)}</h1><small>${esc(S.nombre||S.email||'')} · ${ROL[S.rol]}</small></div><button class="chip" id="sync-chip" data-act="sync">${statusTxt()}</button></header>
-  <button class="btn btn-primary big" data-act="nueva">+ Nueva cotización</button>
+  <button class="btn btn-primary big" data-act="nueva">+ Nuevo proyecto</button>
   <div class="grid2" style="margin-bottom:12px"><div class="card stat"><small>Por cerrar</small><b>${money(sum(ab))}</b><span>${ab.length} cotizaciones</span></div><div class="card stat"><small>Obras en curso</small><b>${money(sum(ob))}</b><span>${ob.length} obras</span></div></div>`;
   if(own()) h+=vInsights();
   h+=`<h2 class="sec">Recientes</h2>`;
@@ -548,18 +612,21 @@ function vInsights(){
 function vCots(){
   const tags=['todas',...Object.keys(ESTADOS)];
   const qs=S.cotizaciones.filter(q=>filtro==='todas'||q.estado===filtro);
-  return `<header class="hd"><h1>${S.rol==='albanil'?'Obras':'Cotizaciones'}</h1>${S.rol==='albanil'?'':'<button class="chip" data-act="nueva">+ Nueva</button>'}</header>
+  return `<header class="hd"><h1>${S.rol==='albanil'?'Obras':'Proyectos'}</h1>${S.rol==='albanil'?'':'<button class="chip" data-act="nueva">+ Nuevo</button>'}</header>
   <div class="tags">${tags.map(t=>`<button class="chip ${t===filtro?'on':''}" data-act="filtro" data-f="${t}">${t==='todas'?'Todas':ESTADOS[t]}</button>`).join('')}</div>
-  ${qs.length?qs.map(rowQ).join(''):'<div class="card mut">No hay cotizaciones aquí.</div>'}`;
+  ${qs.length?qs.map(rowQ).join(''):'<div class="card mut">No hay proyectos aquí.</div>'}`;
 }
 
 function txtMargen(l){ const m=l.precio>0?(l.precio-l.costo)/l.precio:0; return 'costo '+money(l.costo)+' · margen '+pct(m); }
 function precioCambiado(l){ const c=cat_(l.c); return !!c && Math.abs(c.precio-l.precio)>0.001; }
 function vZona(q,z){
+  const ar=areaDe(q,z);
+  const chipsDe=l=>{ if(!ar) return ''; const c=derivados(ar).filter(d=>d.u===l.unidad); return c.length?`<div class="tags" style="margin:6px 0 0">${c.map(d=>`<button class="chip" data-act="usar" data-z="${z.id}" data-l="${l.id}" data-v="${d.v}">${esc(d.l)} ${d.v}</button>`).join('')}</div>`:''; };
   const lineas = z.lineas.map(l=>`
    <div class="line"><div class="lname">${esc(l.nombre)}<small${own()?` id="lm-${l.id}"`:''}>${own()?txtMargen(l):money(l.precio)+' / '+l.unidad}${l.opcional?' · <b>OPCIONAL (no suma)</b>':''}</small></div>
    ${own()?`<div class="lctrl pr"><span class="u">Precio por ${l.unidad}${precioCambiado(l)?' · <b style="color:var(--warn)">ajustado</b> (catálogo '+money(cat_(l.c).precio)+')':''}</span><input class="prc" type="number" inputmode="decimal" step="any" value="${l.precio}" data-z="${z.id}" data-l="${l.id}"></div>`:''}
    <div class="lctrl"><input class="qty" type="number" inputmode="decimal" step="any" value="${l.qty}" data-z="${z.id}" data-l="${l.id}"><span class="u">${l.unidad}</span><b id="ls-${l.id}">${money(l.qty*l.precio)}</b></div>
+   ${chipsDe(l)}
    ${(l.fotos&&l.fotos.length)?`<div class="fotos">${l.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-l="${l.id}" data-f="${f}">✕</button></div>`).join('')}</div>`:''}
    <div class="lact"><button class="btn" data-act="addfoto" data-z="${z.id}" data-l="${l.id}">📷 Foto${l.fotos&&l.fotos.length?' ('+l.fotos.length+')':''}</button><button class="btn ${l.opcional?'btn-primary':''}" data-act="opt" data-z="${z.id}" data-l="${l.id}">Opcional</button><button class="btn btn-danger" data-act="dell" data-z="${z.id}" data-l="${l.id}">Quitar</button></div></div>`).join('');
   const fotos = z.fotos.length ? `<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-f="${f}">✕</button></div>`).join('')}</div>` : '';
@@ -567,6 +634,7 @@ function vZona(q,z){
   const cab = `<div class="zhead"><button class="ib" data-act="toggle" data-z="${z.id}" title="Plegar o abrir">${col?'▸':'▾'}</button><input data-zname="${z.id}" value="${esc(z.nombre)}"><b id="zs-${z.id}">${money(zraw(z))}</b></div>`;
   if(col) return `<section class="card" id="z-${z.id}">${cab}<div class="mut" style="font-size:14px">${z.lineas.length} conceptos · toca ▸ para ver y editar</div></section>`;
   return `<section class="card" id="z-${z.id}">${cab}
+   ${infoArea(q,ar,z,false)}
    ${lineas || '<div class="mut" style="padding:6px 0">Sin conceptos todavía.</div>'}
    <div class="zact"><button class="btn" data-act="addpaq" data-z="${z.id}">+ Paquete</button><button class="btn" data-act="addcon" data-z="${z.id}">+ Concepto</button><button class="btn" data-act="addfoto" data-z="${z.id}">📷 Foto</button></div>
    ${fotos}
@@ -574,18 +642,52 @@ function vZona(q,z){
    <button class="btn btn-danger sm" data-act="delzona" data-z="${z.id}">Quitar zona</button></section>`;
 }
 
-function vCot(q){
-  const t=tot(q);
-  const estados=own()?['borrador','enviada','aceptada','en_obra','rechazada',...(q.estado==='terminada'?['terminada']:[])]:['borrador','enviada','aceptada','rechazada'];
-  const lock=!own()&&!['borrador','enviada'].includes(q.estado);
-  let h=`<header class="hd"><a class="back" href="#/cots">‹ Cotizaciones</a><span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></header>
-  ${lock?'<div class="card" style="color:var(--warn)">Esta cotización ya está cerrada: solo el dueño puede modificarla.</div>':''}
-  <div class="${lock?'lock':''}">
-  <section class="card"><h2>${q.folio} · Cliente</h2>
+function vArea(q,a){
+  const T=TIPOS[a.tipo]||TIPOS.otro, col=colapsadas.has('a'+a.id), fo=a.fotos||[];
+  const cab=`<div class="zhead"><button class="ib" data-act="toggle" data-z="a${a.id}" title="Plegar o abrir">${col?'▸':'▾'}</button><input data-aname="${a.id}" value="${esc(a.nombre)}"><span style="font-size:24px">${T.ic}</span></div>`;
+  if(col) return `<section class="card" id="a-${a.id}">${cab}<div class="mut" style="font-size:14px">${resumenHtml(a)} · ${fo.length} foto(s)</div></section>`;
+  const campos=T.campos.length?`<div class="grid2">${T.campos.map(([k,l])=>`<label>${l}<input class="medida" type="number" inputmode="decimal" step="any" data-a="${a.id}" data-k="${k}" value="${(a.med||{})[k]??''}"></label>`).join('')}</div>`:'<p class="mut" style="margin-top:0">Usa “+ Otra medida” para anotar lo que midas aquí.</p>';
+  const ex=(a.extras||[]).map(e=>`<div class="exrow"><input data-ex="${a.id}|${e.id}|etiqueta" value="${esc(e.etiqueta)}" placeholder="Qué mides"><input data-ex="${a.id}|${e.id}|valor" type="number" inputmode="decimal" step="any" value="${e.valor}" placeholder="0"><select data-ex="${a.id}|${e.id}|unidad">${['m','m²','ml','pza'].map(u=>`<option ${u===e.unidad?'selected':''}>${u}</option>`).join('')}</select><button class="ib" data-act="delex" data-a="${a.id}" data-e="${e.id}" title="Quitar">✕</button></div>`).join('');
+  return `<section class="card" id="a-${a.id}">${cab}
+   ${campos}${ex}
+   <button class="btn sm" data-act="addex" data-a="${a.id}">+ Otra medida</button>
+   <div class="lev-info" style="margin-top:8px">Calculado: <span id="ares-${a.id}">${resumenHtml(a)}</span></div>
+   ${fo.length?`<div class="fotos">${fo.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-a="${a.id}" data-f="${f}">✕</button></div>`).join('')}</div>`:''}
+   <div class="lact"><button class="btn btn-primary" data-act="addfoto" data-a="${a.id}">📷 Foto${fo.length?' ('+fo.length+')':''}</button></div>
+   <label style="margin-top:10px">Notas de esta área (estado, humedad, lo que pide el cliente…)<textarea data-anota="${a.id}" placeholder="Ej. Muro con humedad en la esquina; el cliente quiere conservar la protección">${esc(a.notas||'')}</textarea></label>
+   <button class="btn btn-danger sm" data-act="delarea" data-a="${a.id}">Quitar área</button></section>`;
+}
+function vLev(q){
+  const L=levOf(q);
+  let h=`<section class="card"><h2>${q.folio} · Cliente</h2>
    <label>Nombre<input data-path="cliente.nombre" value="${esc(q.cliente.nombre)}" placeholder="Nombre del cliente"></label>
    <label>WhatsApp / teléfono<input data-path="cliente.tel" inputmode="tel" value="${esc(q.cliente.tel)}"></label>
    <label>Dirección o colonia<input data-path="cliente.dir" value="${esc(q.cliente.dir)}"></label>
-   <label>Trabajo (descripción corta)<input data-path="titulo" value="${esc(q.titulo)}" placeholder="Ej. Remodelación de cocina y ventana"></label></section>`;
+   <label>Trabajo (descripción corta)<input data-path="titulo" value="${esc(q.titulo)}" placeholder="Ej. Remodelación de cocina y ventanas"></label></section>
+   <h2 class="sec">Áreas del proyecto</h2>`;
+  h+=L.areas.length?L.areas.map(a=>vArea(q,a)).join(''):'<div class="card mut">Agrega cada lugar donde se va a trabajar: una ventana, un muro, el baño, la cocina… En cada una anotas medidas, fotos y notas.</div>';
+  h+=`<button class="btn btn-primary" data-act="addarea">+ Agregar área</button>
+   <section class="card"><h2>Fotos generales y notas</h2>
+   ${(L.fotos||[]).length?`<div class="fotos">${L.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-gen="1" data-f="${f}">✕</button></div>`).join('')}</div>`:''}
+   <div class="lact"><button class="btn" data-act="addfoto" data-gen="1">📷 Foto general (fachada, acceso…)</button></div>
+   <label style="margin-top:10px">Notas generales (acceso, horarios, materiales que ya tiene el cliente…)<textarea data-gnota="1">${esc(L.notas||'')}</textarea></label></section>`;
+  return h;
+}
+function vCot(q){
+  const t=tot(q), et=etapa(q);
+  const estados=own()?['borrador','enviada','aceptada','en_obra','rechazada',...(q.estado==='terminada'?['terminada']:[])]:['borrador','enviada','aceptada','rechazada'];
+  const lock=!own()&&!['borrador','enviada'].includes(q.estado);
+  const L=levOf(q), sinZona=L.areas.filter(a=>!q.zonas.some(z=>z.areaId===a.id)).length;
+  let h=`<header class="hd"><a class="back" href="#/cots">‹ Proyectos</a><span class="chip e-${q.estado}">${estadoTxt(q)}</span></header>
+  <div class="tabs"><button class="${et==='lev'?'on':''}" data-act="tab" data-t="lev">1 · Levantamiento</button><button class="${et==='cot'?'on':''}" data-act="tab" data-t="cot">2 · Cotización</button></div>
+  ${lock?'<div class="card" style="color:var(--warn)">Este proyecto ya está cerrado: solo el dueño puede modificarlo.</div>':''}
+  <div class="${lock?'lock':''}">`;
+  if(et==='lev'){
+    const nf=L.areas.reduce((n,a)=>n+(a.fotos||[]).length,0)+(L.fotos||[]).length;
+    return h+vLev(q)+`</div><div class="totbar"><div><small>${L.areas.length} área(s)</small><b>${nf} foto(s)</b></div><button class="btn btn-primary" data-act="pasarcot">Pasar a cotizar →</button></div>`;
+  }
+  h+=`<section class="card"><div class="kv"><b>${esc(q.cliente.nombre||'Sin nombre')}</b><small>${q.folio}</small></div><small>${esc(q.titulo)}${q.cliente.dir?' · '+esc(q.cliente.dir):''}</small></section>`;
+  if(sinZona) h+=`<div class="card"><b>${sinZona} área(s) del levantamiento todavía no están en la cotización.</b><button class="btn btn-primary" style="margin:10px 0 0" data-act="pasarcot">Agregarlas a la cotización</button></div>`;
   h+=q.zonas.map(z=>vZona(q,z)).join('');
   h+=`<button class="btn btn-primary" data-act="addpaq" data-z="">+ Agregar otro paquete (otra ventana, baño, cocina…)</button>
   <button class="btn" data-act="addzona">+ Agregar zona vacía</button>
@@ -618,7 +720,8 @@ function vDoc(q){
       ? `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td><td class="n">${money(l.qty*l.precio*imp)}</td></tr>`
       : `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td></tr>`)
       +((l.fotos&&l.fotos.length)?`<tr><td colspan="${det?3:2}"><div class="ph">${l.fotos.map(f=>`<img data-foto="${f}" data-cot="${q.id}" alt="">`).join('')}</div></td></tr>`:'')).join('');
-    const fotos=z.fotos.length?`<div class="ph">${z.fotos.map(f=>`<img data-foto="${f}" data-cot="${q.id}" alt="">`).join('')}</div>`:'';
+    const arf=(areaDe(q,z)?.fotos)||[];
+    const fotos=(z.fotos.length||arf.length)?`<div class="ph">${[...arf,...z.fotos].map(f=>`<img data-foto="${f}" data-cot="${q.id}" alt="">`).join('')}</div>`:'';
     return `<h3>${esc(z.nombre)} <span style="float:right">${money(zdoc(q,z))}</span></h3><table><tr><th>Concepto</th><th class="n">Cantidad</th>${det?'<th class="n">Importe</th>':''}</tr>${filas}</table>${z.notas?`<pre>${esc(z.notas)}</pre>`:''}${fotos}`;
   }).join('');
   const opc=q.zonas.flatMap(z=>z.lineas.filter(l=>l.opcional));
@@ -685,12 +788,15 @@ function vHomeAlb(){
 }
 function vObra(q){
   const zonas=q.zonas.filter(z=>z.lineas.length||z.notas||z.fotos.length).map(z=>`<section class="card"><h2>${esc(z.nombre)}</h2>
+    ${infoArea(q,areaDe(q,z),z,true)}
     ${z.notas?`<p style="white-space:pre-wrap;margin-top:0">${esc(z.notas)}</p>`:''}
     ${z.lineas.filter(l=>!l.opcional).map(l=>`<div class="line"><div class="lname">${esc(l.nombre)}</div><div class="mut">${l.qty} ${l.unidad}</div>${(l.fotos&&l.fotos.length)?`<div class="fotos">${l.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</div>`).join('')}
     ${z.fotos.length?`<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</section>`).join('');
   return `<header class="hd"><a class="back" href="#/home">‹ Obras</a><span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></header>
   <section class="card"><h2>${esc(q.cliente.nombre||'Cliente')}</h2><div>${esc(q.titulo)}</div><div class="mut">${esc(q.cliente.dir)}</div>
-  ${q.cliente.tel?`<a class="btn" style="margin-top:10px" href="tel:${esc(q.cliente.tel)}">Llamar al cliente</a>`:''}</section>${zonas}`;
+  ${q.cliente.tel?`<a class="btn" style="margin-top:10px" href="tel:${esc(q.cliente.tel)}">Llamar al cliente</a>`:''}
+  ${levOf(q).notas?`<p style="white-space:pre-wrap;margin-bottom:0">${esc(levOf(q).notas)}</p>`:''}
+  ${(levOf(q).fotos||[]).length?`<div class="fotos">${levOf(q).fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</section>${zonas}`;
 }
 function vEquipo(){
   const op=['pendiente','cotizador','albanil'];
@@ -775,11 +881,13 @@ function nombreSugerido(p){
 }
 function paqForm(zid,pid){
   const p=S.paquetes.find(x=>x.id===pid);
+  const zz=curQ().zonas.find(z=>z.id===zid), ar=areaDe(curQ(),zz), pre=ar?clavesPaq(ar):{};
   modal(`<div class="mh"><h2>${esc(p.nombre)}</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+   ${ar?'<div class="lev-info">Medidas cargadas del levantamiento de “'+esc(ar.nombre)+'”. Puedes corregirlas.</div>':''}
    <p class="mut" style="margin-top:0">Captura las medidas y la app arma todos los conceptos. Después puedes ajustar cada cantidad o quitar lo que no aplique.</p>
-   <label>Nombre de esta pieza o área<input id="pp-nombre" value="${esc(nombreSugerido(p))}"></label>
-   ${p.params.map(x=>`<label>${esc(x.l)}<input id="pp-${x.k}" type="number" inputmode="decimal" step="any" value="${x.d}"></label>`).join('')}
-   <label>¿Cuántas piezas iguales? (1 si es solo una)<input id="pp-cant" type="number" inputmode="numeric" min="1" step="1" value="1"></label>
+   <label>Nombre de esta pieza o área<input id="pp-nombre" value="${esc(ar?ar.nombre:nombreSugerido(p))}"></label>
+   ${p.params.map(x=>`<label>${esc(x.l)}<input id="pp-${x.k}" type="number" inputmode="decimal" step="any" value="${pre[x.k]??x.d}"></label>`).join('')}
+   <label>¿Cuántas piezas iguales? (1 si es solo una)<input id="pp-cant" type="number" inputmode="numeric" min="1" step="1" value="${pre.cant||1}"></label>
    <button class="btn btn-primary" data-act="paqadd" data-p="${pid}" data-z="${zid}">Agregar a la cotización</button>`);
 }
 
@@ -829,12 +937,13 @@ const ACT = {
   paqadd(b){
     const q=curQ(), p=S.paquetes.find(x=>x.id===b.dataset.p), vars={};
     let origen=q.zonas.findIndex(z=>z.id===b.dataset.z);
-    if(origen<0) origen=q.zonas.findIndex(z=>z.lineas.length===0); // desde el botón general: aprovecha una zona vacía
+    if(origen<0) origen=q.zonas.findIndex(z=>!z.areaId&&z.lineas.length===0); // desde el botón general: aprovecha una zona vacía
     const cant=Math.max(1,Math.round(parseFloat($('#pp-cant').value)||1));
     const nombre=($('#pp-nombre').value.trim()||p.nombre)+(cant>1?' ×'+cant:'');
     let z = origen>=0 ? q.zonas[origen] : null;
     // Cada paquete va en su propia zona; solo se reutiliza una zona vacía.
-    if(z && z.lineas.length===0){ z.nombre=nombre; }
+    if(z && z.areaId){ /* mismo lugar del levantamiento: se agrega en su zona */ }
+    else if(z && z.lineas.length===0){ z.nombre=nombre; }
     else { z={id:uid(),nombre,lineas:[],fotos:[],notas:''}; q.zonas.splice(origen>=0?origen+1:q.zonas.length,0,z); }
     p.params.forEach(x=>vars[x.k]=parseFloat($('#pp-'+x.k).value)||0);
     Object.entries(p.calc).forEach(([k,e])=>vars[k]=ev(e,vars));
@@ -862,19 +971,44 @@ const ACT = {
     save(); closeModal(); render(true); toast(items.length+' precios actualizados');
   },
   toggle(b){ const id=b.dataset.z; if(colapsadas.has(id)) colapsadas.delete(id); else colapsadas.add(id); render(true); },
+  tab(b){ tabProy[curQ().id]=b.dataset.t; render(); },
+  addarea(){
+    modal(`<div class="mh"><h2>¿Qué área es?</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+     ${Object.entries(TIPOS).map(([k,T])=>`<button class="btn big" data-act="areanew" data-t="${k}">${T.ic} ${T.n}</button>`).join('')}`);
+  },
+  areanew(b){
+    const q=curQ(), L=lev(q), T=TIPOS[b.dataset.t], n=L.areas.filter(a=>a.tipo===b.dataset.t).length+1;
+    const a={id:uid(),tipo:b.dataset.t,nombre:T.n+' '+n,med:{...(T.def||{})},extras:[],fotos:[],notas:''};
+    L.areas.forEach(x=>colapsadas.add('a'+x.id)); L.areas.push(a); save(); closeModal(); render(true);
+    const el=document.getElementById('a-'+a.id); if(el){ el.scrollIntoView({block:'start'}); const i=el.querySelector('.medida'); if(i) i.focus(); }
+  },
+  delarea(b){
+    const q=curQ(), L=lev(q), a=L.areas.find(x=>x.id===b.dataset.a), z=q.zonas.find(z=>z.areaId===a.id);
+    if(!confirm('¿Quitar “'+a.nombre+'”?'+(z&&z.lineas.length?' También se quitarán sus '+z.lineas.length+' conceptos de la cotización.':''))) return;
+    (a.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); });
+    L.areas=L.areas.filter(x=>x.id!==a.id); if(z) q.zonas=q.zonas.filter(x=>x.id!==z.id);
+    if(!q.zonas.length) q.zonas.push({id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''});
+    save(); render(true);
+  },
+  addex(b){ const a=lev(curQ()).areas.find(x=>x.id===b.dataset.a); (a.extras=a.extras||[]).push({id:uid(),etiqueta:'',valor:'',unidad:'m'}); save(); render(true); },
+  delex(b){ const a=lev(curQ()).areas.find(x=>x.id===b.dataset.a); a.extras=(a.extras||[]).filter(e=>e.id!==b.dataset.e); save(); render(true); },
+  pasarcot(){ const q=curQ(), n=crearZonasDeAreas(q); tabProy[q.id]='cot'; save(); render(); if(n) toast(n+' área(s) pasaron a la cotización'); },
+  paqarea(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z), a=areaDe(q,z), pid=PAQ_TIPO[a.tipo]; if(pid&&S.paquetes.some(p=>p.id===pid)) paqForm(z.id,pid); else pickPaquete(z.id); },
+  usar(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.qty=num(b.dataset.v); save(); render(true); },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
   dell(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z); (z.lineas.find(l=>l.id===b.dataset.l)?.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
   addfoto(b){
-    fotoZona=b.dataset.z; fotoLinea=b.dataset.l||null;
+    fotoZona=b.dataset.z||null; fotoLinea=b.dataset.l||null; fotoArea=b.dataset.a||null; fotoGen=!!b.dataset.gen;
     modal(`<div class="mh"><h2>Agregar foto</h2><button class="chip" data-act="mclose">Cerrar</button></div>
      <button class="btn btn-primary big" data-act="fotocam">📷 Tomar foto ahora</button>
      <button class="btn big" data-act="fotogal">🖼 Elegir de la galería</button>`);
   },
   fotocam(){ closeModal(); $('#foto-cam').click(); },
   fotogal(){ closeModal(); $('#foto-in').click(); },
-  delfoto(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z), ln=b.dataset.l?z.lineas.find(l=>l.id===b.dataset.l):null; if(ln) ln.fotos=(ln.fotos||[]).filter(f=>f!==b.dataset.f); else z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
-  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); }); S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
-  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); q.zonas.forEach(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
+  delfoto(b){ const q0=curQ(), z=q0.zonas.find(z=>z.id===b.dataset.z), ln=(z&&b.dataset.l)?z.lineas.find(l=>l.id===b.dataset.l):null; if(b.dataset.gen) lev(q0).fotos=(lev(q0).fotos||[]).filter(f=>f!==b.dataset.f); else if(b.dataset.a){ const a=lev(q0).areas.find(x=>x.id===b.dataset.a); a.fotos=(a.fotos||[]).filter(f=>f!==b.dataset.f); } else if(ln) ln.fotos=(ln.fotos||[]).filter(f=>f!==b.dataset.f); else z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
+  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); });
+    if(c.lev){ c.lev.fotos=[]; c.lev.areas.forEach(a=>{ a.fotos=[]; }); } S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
+  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); [...q.zonas.flatMap(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])]),...levOf(q).areas.flatMap(a=>a.fotos||[]),...(levOf(q).fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
   motivo(b){ const q=curQ(); q.estado='rechazada'; q.motivo=b.dataset.m; save(); closeModal(); render(true); },
   cerrar(){
     const q=curQ(); const reales={};
@@ -918,6 +1052,13 @@ document.addEventListener('input',e=>{
   } else if(t.classList.contains('qty')){
     const q=curQ(), l=q.zonas.find(z=>z.id===t.dataset.z).lineas.find(l=>l.id===t.dataset.l);
     l.qty=parseFloat(t.value)||0; save(); updTotals(q);
+  } else if(t.classList.contains('medida')){
+    const a=lev(curQ()).areas.find(x=>x.id===t.dataset.a); a.med=a.med||{}; a.med[t.dataset.k]=t.value===''?'':parseFloat(t.value); save();
+    const el=$('#ares-'+a.id); if(el) el.innerHTML=resumenHtml(a);
+  } else if(t.dataset.ex){
+    const [aid,eid,campo]=t.dataset.ex.split('|'), a=lev(curQ()).areas.find(x=>x.id===aid), e=a.extras.find(x=>x.id===eid);
+    e[campo]=campo==='valor'?(t.value===''?'':parseFloat(t.value)):t.value; save();
+    const el=$('#ares-'+a.id); if(el) el.innerHTML=resumenHtml(a);
   } else if(t.id==='q-search') fillList(t.value);
   else if(t.id==='cat-search'){ catQ=t.value; const pos=t.selectionStart; render(true); const n=$('#cat-search'); n.focus(); n.setSelectionRange(pos,pos); }
 });
@@ -932,6 +1073,9 @@ document.addEventListener('change',e=>{
     S.config[t.dataset.cfg]=v; save();
   } else if(t.dataset.zname){ curQ().zonas.find(z=>z.id===t.dataset.zname).nombre=t.value; save(); }
   else if(t.dataset.znota){ curQ().zonas.find(z=>z.id===t.dataset.znota).notas=t.value; save(); }
+  else if(t.dataset.aname){ const q=curQ(), a=lev(q).areas.find(x=>x.id===t.dataset.aname); a.nombre=t.value; const z=q.zonas.find(z=>z.areaId===a.id); if(z) z.nombre=t.value; save(); }
+  else if(t.dataset.anota){ lev(curQ()).areas.find(x=>x.id===t.dataset.anota).notas=t.value; save(); }
+  else if(t.dataset.gnota){ lev(curQ()).notas=t.value; save(); }
   else if(t.id==='estado-sel'){
     const q=curQ();
     if(t.value==='rechazada'){ modal(`<div class="mh"><h2>¿Por qué se perdió?</h2><button class="chip" data-act="mclose">Cancelar</button></div>${['Precio','Tiempo','Eligió a otro','Sin respuesta','Otro'].map(m=>`<button class="btn" data-act="motivo" data-m="${m}">${m}</button>`).join('')}`); t.value=q.estado; return; }
@@ -965,8 +1109,10 @@ function comprimir(file){
     img.onerror=rej; img.src=u; });
 }
 async function subirFotos(files){
-  const q=curQ(); if(!q) return; const z=q.zonas.find(z=>z.id===fotoZona); if(!z) return;
-  const ln=fotoLinea?z.lineas.find(l=>l.id===fotoLinea):null, dest=ln?(ln.fotos=ln.fotos||[]):z.fotos;
+  const q=curQ(); if(!q) return; let dest;
+  if(fotoGen) dest=(lev(q).fotos=lev(q).fotos||[]);
+  else if(fotoArea){ const a=lev(q).areas.find(x=>x.id===fotoArea); if(!a) return; dest=(a.fotos=a.fotos||[]); }
+  else { const z=q.zonas.find(z=>z.id===fotoZona); if(!z) return; const ln=fotoLinea?z.lineas.find(l=>l.id===fotoLinea):null; dest=ln?(ln.fotos=ln.fotos||[]):z.fotos; }
   for(const f of files){ try{ const id='f_'+uid(); await fotoPut(id,await comprimir(f)); dest.push(id); S.fotosPend.push({id,cot:q.id}); }catch(e){ toast('No se pudo guardar una foto'); } }
   save(); render(true);
 }

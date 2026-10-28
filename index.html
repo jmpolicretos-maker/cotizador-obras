@@ -479,6 +479,8 @@ function aprender(q){
 const route = ()=>{ const [,v='home',id] = location.hash.split('/'); return {v,id}; };
 const curQ = ()=>S.cotizaciones.find(x=>x.id===route().id);
 let filtro='todas', catQ='', pickAdded=0, fotoZona=null, pickZona=null;
+const colapsadas = new Set();
+const NOMBRE_PAQ = {ventana:'Ventana',bano:'Baño',cocina:'Cocina',piso:'Piso',muropint:'Muros'};
 
 function render(keep){
   if(!ME||!S){ $('#app').innerHTML=vAuth(); $('#nav').style.display='none'; return; }
@@ -552,7 +554,10 @@ function vZona(q,z){
    <div class="lctrl"><input class="qty" type="number" inputmode="decimal" step="any" value="${l.qty}" data-z="${z.id}" data-l="${l.id}"><span class="u">${l.unidad}</span><b id="ls-${l.id}">${money(l.qty*l.precio)}</b>
    <button class="ib ${l.opcional?'on':''}" data-act="opt" data-z="${z.id}" data-l="${l.id}" title="Opcional">Op</button><button class="ib" data-act="dell" data-z="${z.id}" data-l="${l.id}" title="Quitar">✕</button></div></div>`).join('');
   const fotos = z.fotos.length ? `<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-f="${f}">✕</button></div>`).join('')}</div>` : '';
-  return `<section class="card" id="z-${z.id}"><div class="zhead"><input data-zname="${z.id}" value="${esc(z.nombre)}"><b id="zs-${z.id}">${money(zraw(z))}</b></div>
+  const col = colapsadas.has(z.id);
+  const cab = `<div class="zhead"><button class="ib" data-act="toggle" data-z="${z.id}" title="Plegar o abrir">${col?'▸':'▾'}</button><input data-zname="${z.id}" value="${esc(z.nombre)}"><b id="zs-${z.id}">${money(zraw(z))}</b></div>`;
+  if(col) return `<section class="card" id="z-${z.id}">${cab}<div class="mut" style="font-size:14px">${z.lineas.length} conceptos · toca ▸ para ver y editar</div></section>`;
+  return `<section class="card" id="z-${z.id}">${cab}
    ${lineas || '<div class="mut" style="padding:6px 0">Sin conceptos todavía.</div>'}
    <div class="zact"><button class="btn" data-act="addpaq" data-z="${z.id}">+ Paquete</button><button class="btn" data-act="addcon" data-z="${z.id}">+ Concepto</button><button class="btn" data-act="addfoto" data-z="${z.id}">📷 Foto</button></div>
    ${fotos}
@@ -573,7 +578,8 @@ function vCot(q){
    <label>Dirección o colonia<input data-path="cliente.dir" value="${esc(q.cliente.dir)}"></label>
    <label>Trabajo (descripción corta)<input data-path="titulo" value="${esc(q.titulo)}" placeholder="Ej. Remodelación de cocina y ventana"></label></section>`;
   h+=q.zonas.map(z=>vZona(q,z)).join('');
-  h+=`<button class="btn" data-act="addzona">+ Agregar zona (cocina, baño, ventana…)</button>
+  h+=`<button class="btn btn-primary" data-act="addpaq" data-z="">+ Agregar otro paquete (otra ventana, baño, cocina…)</button>
+  <button class="btn" data-act="addzona">+ Agregar zona vacía</button>
   <section class="card"><h2>Totales</h2>
    <div class="kv"><span>Subtotal</span><b id="t-venta">${money(t.venta)}</b></div>
    ${own()?`<label>Imprevistos (%) — se reparte en los precios
@@ -745,11 +751,18 @@ function pickPaquete(zid){
   modal(`<div class="mh"><h2>Elegir paquete</h2><button class="chip" data-act="mclose">Cerrar</button></div>`+
     S.paquetes.map(p=>`<button class="row" data-act="paq" data-p="${p.id}" data-z="${zid}"><div><b>${esc(p.nombre)}</b><small>${p.items.length} conceptos</small></div></button>`).join(''));
 }
+function nombreSugerido(p){
+  const base = NOMBRE_PAQ[p.id] || p.nombre, q = curQ();
+  const n = q ? q.zonas.filter(z=>z.nombre.startsWith(base)).length : 0;
+  return base+' '+(n+1);
+}
 function paqForm(zid,pid){
   const p=S.paquetes.find(x=>x.id===pid);
   modal(`<div class="mh"><h2>${esc(p.nombre)}</h2><button class="chip" data-act="mclose">Cerrar</button></div>
    <p class="mut" style="margin-top:0">Captura las medidas y la app arma todos los conceptos. Después puedes ajustar cada cantidad o quitar lo que no aplique.</p>
+   <label>Nombre de esta pieza o área<input id="pp-nombre" value="${esc(nombreSugerido(p))}"></label>
    ${p.params.map(x=>`<label>${esc(x.l)}<input id="pp-${x.k}" type="number" inputmode="decimal" step="any" value="${x.d}"></label>`).join('')}
+   <label>¿Cuántas piezas iguales? (1 si es solo una)<input id="pp-cant" type="number" inputmode="numeric" min="1" step="1" value="1"></label>
    <button class="btn btn-primary" data-act="paqadd" data-p="${pid}" data-z="${zid}">Agregar a la cotización</button>`);
 }
 
@@ -797,12 +810,24 @@ const ACT = {
   addpaq(b){ pickPaquete(b.dataset.z); },
   paq(b){ paqForm(b.dataset.z,b.dataset.p); },
   paqadd(b){
-    const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z), p=S.paquetes.find(x=>x.id===b.dataset.p), vars={};
+    const q=curQ(), p=S.paquetes.find(x=>x.id===b.dataset.p), vars={};
+    let origen=q.zonas.findIndex(z=>z.id===b.dataset.z);
+    if(origen<0) origen=q.zonas.findIndex(z=>z.lineas.length===0); // desde el botón general: aprovecha una zona vacía
+    const cant=Math.max(1,Math.round(parseFloat($('#pp-cant').value)||1));
+    const nombre=($('#pp-nombre').value.trim()||p.nombre)+(cant>1?' ×'+cant:'');
+    let z = origen>=0 ? q.zonas[origen] : null;
+    // Cada paquete va en su propia zona; solo se reutiliza una zona vacía.
+    if(z && z.lineas.length===0){ z.nombre=nombre; }
+    else { z={id:uid(),nombre,lineas:[],fotos:[],notas:''}; q.zonas.splice(origen>=0?origen+1:q.zonas.length,0,z); }
     p.params.forEach(x=>vars[x.k]=parseFloat($('#pp-'+x.k).value)||0);
     Object.entries(p.calc).forEach(([k,e])=>vars[k]=ev(e,vars));
-    let n=0; p.items.forEach(([cid,expr])=>{ const c=cat_(cid); if(!c) return; const qty=redondea(c.unidad,ev(expr,vars)); if(qty>0){ addLinea(z,c,qty); n++; } });
-    save(); closeModal(); render(true); toast(n+' conceptos agregados');
+    let n=0; p.items.forEach(([cid,expr])=>{ const c=cat_(cid); if(!c) return; const qty=redondea(c.unidad,ev(expr,vars)*cant); if(qty>0){ addLinea(z,c,qty); n++; } });
+    q.zonas.forEach(x=>{ if(x.id!==z.id&&x.lineas.length) colapsadas.add(x.id); });
+    colapsadas.delete(z.id);
+    save(); closeModal(); render(true); toast(n+' conceptos agregados en “'+nombre+'”');
+    const el=document.getElementById('z-'+z.id); if(el) el.scrollIntoView({block:'start'});
   },
+  toggle(b){ const id=b.dataset.z; if(colapsadas.has(id)) colapsadas.delete(id); else colapsadas.add(id); render(true); },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
   dell(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
   addfoto(b){ fotoZona=b.dataset.z; $('#foto-in').click(); },

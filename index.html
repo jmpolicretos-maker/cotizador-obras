@@ -70,6 +70,8 @@ button.chip{cursor:pointer;padding:8px 12px;min-height:36px}
 .lctrl input{width:96px;margin:0;text-align:right}
 .lctrl .u{flex:1;color:var(--mut);font-size:14px}
 .lctrl.pr{margin:2px 0 6px}
+.lact{display:flex;gap:8px;margin-top:8px}
+.lact .btn{flex:1;margin:0;min-height:40px;padding:6px;font-size:14px}
 .lctrl b{min-width:80px;text-align:right}
 .ib{width:44px;height:44px;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:10px;font-size:15px;cursor:pointer}
 .ib.on{background:var(--soft);color:var(--pri);border-color:var(--pri)}
@@ -197,7 +199,7 @@ function cj(v){
 function pack(q){ const d=JSON.parse(JSON.stringify(q)); delete d.cierre; d.zonas.forEach(z=>z.lineas.forEach(l=>delete l.costo)); return d; }
 const cotJ = q=>cj(pack(q));
 const cieJ = q=>cj(q.cierre||null);
-const catPub = c=>({id:c.id,cat:c.cat,nombre:c.nombre,unidad:c.unidad,precio:c.precio});
+const catPub = c=>({id:c.id,cat:c.cat,nombre:c.nombre,unidad:c.unidad,precio:c.precio,tipo:c.tipo||'mo'});
 const catCost = c=>({costo:c.costo,n:c.n||0,hist:c.hist||[]});
 const catJ = c=>cj(S.rol==='dueno'?{p:catPub(c),c:catCost(c)}:{p:catPub(c)});
 const isPerm = e=>e&&(e.code==='42501'||/row-level security|permission denied/i.test(e.message||''));
@@ -312,7 +314,7 @@ function mergePull(R,owner){
   const kmap=new Map((R.costos||[]).map(c=>[c.id,c])), lc=new Map(S.catalogo.map(c=>[c.id,c])), seen=new Set(), cat=[];
   for(const r of R.catalogo){
     seen.add(r.id); const k=kmap.get(r.id), l=lc.get(r.id);
-    const rc={id:r.id,cat:r.cat,nombre:r.nombre,unidad:r.unidad,precio:Number(r.precio),costo:owner?Number(k?.costo??0):0,n:owner?(k?.n||0):0,hist:owner?(k?.hist||[]):[]};
+    const rc={id:r.id,cat:r.cat,nombre:r.nombre,unidad:r.unidad,precio:Number(r.precio),tipo:r.tipo||'mo',costo:owner?Number(k?.costo??0):0,n:owner?(k?.n||0):0,hist:owner?(k?.hist||[]):[]};
     if(l&&snap.cat[r.id]!==undefined&&catJ(l)!==snap.cat[r.id]) cat.push(l);
     else { cat.push(rc); snap.cat[r.id]=catJ(rc); }
   }
@@ -421,12 +423,13 @@ function redondea(unidad,x){ return UNIT_INT.includes(unidad) ? Math.ceil(x-1e-9
 const cat_ = id=>S.catalogo.find(c=>c.id===id);
 
 /* ================= Cálculos de cotización ================= */
+const tipoDe = l=>l.tipo||cat_(l.c)?.tipo||'mo';
 function tot(q){
-  let costo=0, venta=0, opc=0;
-  q.zonas.forEach(z=>z.lineas.forEach(l=>{ if(l.opcional) opc+=l.qty*l.precio; else { costo+=l.qty*l.costo; venta+=l.qty*l.precio; } }));
+  let costo=0, venta=0, opc=0; const por={mo:0,material:0,servicio:0};
+  q.zonas.forEach(z=>z.lineas.forEach(l=>{ if(l.opcional) opc+=l.qty*l.precio; else { costo+=l.qty*l.costo; venta+=l.qty*l.precio; por[tipoDe(l)]+=l.qty*l.precio; } }));
   const imp = venta*(q.imprevistos||0), desc = q.descuento||0;
   const sub = venta+imp-desc, iva = sub*(S.config.iva||0);
-  return {costo,venta,imp,desc,sub,iva,total:sub+iva,util:sub-costo,mg:sub>0?(sub-costo)/sub:0,opc:opc*(1+(q.imprevistos||0))};
+  return {costo,venta,mo:por.mo,mat:por.material,srv:por.servicio,imp,desc,sub,iva,total:sub+iva,util:sub-costo,mg:sub>0?(sub-costo)/sub:0,opc:opc*(1+(q.imprevistos||0))};
 }
 /* En el documento del cliente, los imprevistos van repartidos en los precios (no se ven como renglón). */
 const zdoc = (q,z)=>z.lineas.filter(l=>!l.opcional).reduce((s,l)=>s+l.qty*l.precio*(1+(q.imprevistos||0)),0);
@@ -438,7 +441,7 @@ function nuevaCot(){
     imprevistos:S.config.imprevistos,descuento:0,supuestos:S.config.supuestos};
   S.cotizaciones.unshift(q); save(); return q;
 }
-function addLinea(z,c,qty){ z.lineas.push({id:uid(),c:c.id,nombre:c.nombre,unidad:c.unidad,qty:qty,costo:c.costo,precio:c.precio,opcional:false}); }
+function addLinea(z,c,qty){ z.lineas.push({id:uid(),c:c.id,nombre:c.nombre,unidad:c.unidad,tipo:c.tipo||'mo',qty:qty,costo:c.costo,precio:c.precio,opcional:false,fotos:[]}); }
 
 /* ================= Aprendizaje =================
    Al cerrar una obra, cada costo real captura mueve el costo del concepto (promedio que
@@ -479,7 +482,7 @@ function aprender(q){
 /* ================= Navegación ================= */
 const route = ()=>{ const [,v='home',id] = location.hash.split('/'); return {v,id}; };
 const curQ = ()=>S.cotizaciones.find(x=>x.id===route().id);
-let filtro='todas', catQ='', pickAdded=0, fotoZona=null, pickZona=null;
+let filtro='todas', catQ='', pickAdded=0, fotoZona=null, fotoLinea=null, pickZona=null;
 const colapsadas = new Set();
 const NOMBRE_PAQ = {ventana:'Ventana',bano:'Baño',cocina:'Cocina',piso:'Piso',muropint:'Muros'};
 
@@ -555,8 +558,9 @@ function vZona(q,z){
   const lineas = z.lineas.map(l=>`
    <div class="line"><div class="lname">${esc(l.nombre)}<small${own()?` id="lm-${l.id}"`:''}>${own()?txtMargen(l):money(l.precio)+' / '+l.unidad}${l.opcional?' · <b>OPCIONAL (no suma)</b>':''}</small></div>
    ${own()?`<div class="lctrl pr"><span class="u">Precio por ${l.unidad}${precioCambiado(l)?' · <b style="color:var(--warn)">ajustado</b> (catálogo '+money(cat_(l.c).precio)+')':''}</span><input class="prc" type="number" inputmode="decimal" step="any" value="${l.precio}" data-z="${z.id}" data-l="${l.id}"></div>`:''}
-   <div class="lctrl"><input class="qty" type="number" inputmode="decimal" step="any" value="${l.qty}" data-z="${z.id}" data-l="${l.id}"><span class="u">${l.unidad}</span><b id="ls-${l.id}">${money(l.qty*l.precio)}</b>
-   <button class="ib ${l.opcional?'on':''}" data-act="opt" data-z="${z.id}" data-l="${l.id}" title="Opcional">Op</button><button class="ib" data-act="dell" data-z="${z.id}" data-l="${l.id}" title="Quitar">✕</button></div></div>`).join('');
+   <div class="lctrl"><input class="qty" type="number" inputmode="decimal" step="any" value="${l.qty}" data-z="${z.id}" data-l="${l.id}"><span class="u">${l.unidad}</span><b id="ls-${l.id}">${money(l.qty*l.precio)}</b></div>
+   ${(l.fotos&&l.fotos.length)?`<div class="fotos">${l.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-l="${l.id}" data-f="${f}">✕</button></div>`).join('')}</div>`:''}
+   <div class="lact"><button class="btn" data-act="addfoto" data-z="${z.id}" data-l="${l.id}">📷 Foto${l.fotos&&l.fotos.length?' ('+l.fotos.length+')':''}</button><button class="btn ${l.opcional?'btn-primary':''}" data-act="opt" data-z="${z.id}" data-l="${l.id}">Opcional</button><button class="btn btn-danger" data-act="dell" data-z="${z.id}" data-l="${l.id}">Quitar</button></div></div>`).join('');
   const fotos = z.fotos.length ? `<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-f="${f}">✕</button></div>`).join('')}</div>` : '';
   const col = colapsadas.has(z.id);
   const cab = `<div class="zhead"><button class="ib" data-act="toggle" data-z="${z.id}" title="Plegar o abrir">${col?'▸':'▾'}</button><input data-zname="${z.id}" value="${esc(z.nombre)}"><b id="zs-${z.id}">${money(zraw(z))}</b></div>`;
@@ -586,6 +590,9 @@ function vCot(q){
   <button class="btn" data-act="addzona">+ Agregar zona vacía</button>
   <section class="card"><h2>Totales</h2>
    <div class="kv"><span>Subtotal</span><b id="t-venta">${money(t.venta)}</b></div>
+   <div class="kv"><small>· Mano de obra</small><small id="t-mo">${money(t.mo)}</small></div>
+   <div class="kv"><small>· Materiales</small><small id="t-mat">${money(t.mat)}</small></div>
+   ${t.srv>0?`<div class="kv"><small>· Servicios de terceros</small><small id="t-srv">${money(t.srv)}</small></div>`:''}
    ${own()?`<label>Imprevistos (%) — se reparte en los precios
      <input data-path="imprevistos" data-pct="1" type="number" inputmode="decimal" step="0.5" value="${Math.round(q.imprevistos*1000)/10}"></label>
      <label>Descuento (${esc(S.config.moneda)})<input data-path="descuento" type="number" inputmode="decimal" value="${q.descuento||0}"></label>`:''}
@@ -606,9 +613,10 @@ function vDoc(q){
   const t=tot(q), cfg=S.config, det=cfg.docDetalle, imp=1+(q.imprevistos||0);
   const zonas=q.zonas.filter(z=>z.lineas.length).map(z=>{
     const lin=z.lineas.filter(l=>!l.opcional);
-    const filas=lin.map(l=>det
+    const filas=lin.map(l=>(det
       ? `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td><td class="n">${money(l.qty*l.precio*imp)}</td></tr>`
-      : `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td></tr>`).join('');
+      : `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td></tr>`)
+      +((l.fotos&&l.fotos.length)?`<tr><td colspan="${det?3:2}"><div class="ph">${l.fotos.map(f=>`<img data-foto="${f}" data-cot="${q.id}" alt="">`).join('')}</div></td></tr>`:'')).join('');
     const fotos=z.fotos.length?`<div class="ph">${z.fotos.map(f=>`<img data-foto="${f}" data-cot="${q.id}" alt="">`).join('')}</div>`:'';
     return `<h3>${esc(z.nombre)} <span style="float:right">${money(zdoc(q,z))}</span></h3><table><tr><th>Concepto</th><th class="n">Cantidad</th>${det?'<th class="n">Importe</th>':''}</tr>${filas}</table>${z.notas?`<pre>${esc(z.notas)}</pre>`:''}${fotos}`;
   }).join('');
@@ -619,6 +627,7 @@ function vDoc(q){
   <div class="doc"><h1>${esc(cfg.negocio)}</h1><div class="meta"><div><b>Cotización ${q.folio}</b><br>${fechaTxt(q.fecha)}<br>Vigencia: ${cfg.vigencia} días</div><div><b>${esc(q.cliente.nombre||'Cliente')}</b><br>${esc(q.cliente.tel)}<br>${esc(q.cliente.dir)}</div></div>
   ${q.titulo?`<div><b>${esc(q.titulo)}</b></div>`:''}
   ${zonas||'<p>Sin conceptos.</p>'}${opcH}
+  <div class="mut" style="margin-top:10px;text-align:right;font-size:13px">Mano de obra ${money(t.mo*imp)} · Materiales ${money(t.mat*imp)}${t.srv?' · Servicios '+money(t.srv*imp):''}</div>
   <div class="totals">${t.desc?`<div class="kv"><span>Subtotal</span><span>${money(t.venta+t.imp)}</span></div><div class="kv"><span>Descuento</span><span>-${money(t.desc)}</span></div>`:''}${t.iva?`<div class="kv"><span>IVA</span><span>${money(t.iva)}</span></div>`:''}<div class="kv tot"><span>TOTAL</span><span>${money(t.total)}</span></div></div>
   <h3>Condiciones</h3><pre>${esc(q.supuestos)}</pre>
   <div class="firma"><div>Cliente</div><div>${esc(cfg.negocio)}</div></div></div>`;
@@ -676,7 +685,7 @@ function vHomeAlb(){
 function vObra(q){
   const zonas=q.zonas.filter(z=>z.lineas.length||z.notas||z.fotos.length).map(z=>`<section class="card"><h2>${esc(z.nombre)}</h2>
     ${z.notas?`<p style="white-space:pre-wrap;margin-top:0">${esc(z.notas)}</p>`:''}
-    ${z.lineas.filter(l=>!l.opcional).map(l=>`<div class="line"><div class="lname">${esc(l.nombre)}</div><div class="mut">${l.qty} ${l.unidad}</div></div>`).join('')}
+    ${z.lineas.filter(l=>!l.opcional).map(l=>`<div class="line"><div class="lname">${esc(l.nombre)}</div><div class="mut">${l.qty} ${l.unidad}</div>${(l.fotos&&l.fotos.length)?`<div class="fotos">${l.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</div>`).join('')}
     ${z.fotos.length?`<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</section>`).join('');
   return `<header class="hd"><a class="back" href="#/home">‹ Obras</a><span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></header>
   <section class="card"><h2>${esc(q.cliente.nombre||'Cliente')}</h2><div>${esc(q.titulo)}</div><div class="mut">${esc(q.cliente.dir)}</div>
@@ -745,6 +754,7 @@ function conceptForm(c,zid){
   modal(`<div class="mh"><h2>${nuevo?'Concepto nuevo':'Editar concepto'}</h2><button class="chip" data-act="mclose">Cerrar</button></div>
    <label>Nombre<input id="cf-nombre" value="${esc(c.nombre)}" placeholder="Ej. Demoler jardinera"></label>
    <label>Categoría<select id="cf-cat">${CATS.map(x=>`<option ${x===c.cat?'selected':''}>${x}</option>`).join('')}</select></label>
+   <label>Tipo<select id="cf-tipo">${[['mo','Mano de obra'],['material','Material'],['servicio','Servicio de terceros']].map(([v,t])=>`<option value="${v}" ${v===(c.tipo||'mo')?'selected':''}>${t}</option>`).join('')}</select></label>
    <label>Unidad de cobro<select id="cf-uni">${UNIDADES.map(x=>`<option ${x===c.unidad?'selected':''}>${x}</option>`).join('')}</select></label>
    <label>Precio de venta (${esc(S.config.moneda)} por unidad)<input id="cf-precio" type="number" inputmode="decimal" value="${c.precio}"></label>
    ${own()?`<label>Costo para ti (${esc(S.config.moneda)} por unidad)${nuevo?' — si lo dejas vacío se calcula con tu margen objetivo':''}<input id="cf-costo" type="number" inputmode="decimal" value="${c.costo}"></label>`:''}
@@ -852,11 +862,11 @@ const ACT = {
   },
   toggle(b){ const id=b.dataset.z; if(colapsadas.has(id)) colapsadas.delete(id); else colapsadas.add(id); render(true); },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
-  dell(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
-  addfoto(b){ fotoZona=b.dataset.z; $('#foto-in').click(); },
-  delfoto(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z); z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
-  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); }); }); S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
-  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); q.zonas.forEach(z=>z.fotos.forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
+  dell(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z); (z.lineas.find(l=>l.id===b.dataset.l)?.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
+  addfoto(b){ fotoZona=b.dataset.z; fotoLinea=b.dataset.l||null; $('#foto-in').click(); },
+  delfoto(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z), ln=b.dataset.l?z.lineas.find(l=>l.id===b.dataset.l):null; if(ln) ln.fotos=(ln.fotos||[]).filter(f=>f!==b.dataset.f); else z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
+  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); }); S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
+  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); q.zonas.forEach(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
   motivo(b){ const q=curQ(); q.estado='rechazada'; q.motivo=b.dataset.m; save(); closeModal(); render(true); },
   cerrar(){
     const q=curQ(); const reales={};
@@ -881,8 +891,8 @@ const ACT = {
     if(!nombre||!(precio>0)){ toast('Pon nombre y precio'); return; }
     let costo = own()&&$('#cf-costo')?parseFloat($('#cf-costo').value):NaN; if(!(costo>=0)) costo=Math.round(precio*(1-S.config.margenObjetivo));
     let c = b.dataset.c ? cat_(b.dataset.c) : null;
-    if(c){ Object.assign(c,{nombre,cat:$('#cf-cat').value,unidad:$('#cf-uni').value,precio,costo}); }
-    else { c={id:'u_'+uid(),nombre,cat:$('#cf-cat').value,unidad:$('#cf-uni').value,precio,costo,n:0}; S.catalogo.push(c);
+    if(c){ Object.assign(c,{nombre,cat:$('#cf-cat').value,unidad:$('#cf-uni').value,tipo:$('#cf-tipo').value,precio,costo}); }
+    else { c={id:'u_'+uid(),nombre,cat:$('#cf-cat').value,unidad:$('#cf-uni').value,tipo:$('#cf-tipo').value,precio,costo,n:0}; S.catalogo.push(c);
       if(b.dataset.z){ const q=curQ(); if(q){ addLinea(q.zonas.find(z=>z.id===b.dataset.z),c,1); pickAdded++; } } }
     save(); if(b.dataset.z){ closeModal(); render(true); toast('Concepto creado y agregado'); } else { closeModal(); render(true); }
   },
@@ -939,7 +949,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.id==='au-p
 function updTotals(q){
   const t=tot(q), set=(id,v)=>{ const el=$('#'+id); if(el) el.textContent=v; };
   q.zonas.forEach(z=>{ set('zs-'+z.id,money(zraw(z))); z.lineas.forEach(l=>{ set('ls-'+l.id,money(l.qty*l.precio)); if(own()) set('lm-'+l.id,txtMargen(l)); }); });
-  set('t-venta',money(t.venta)); set('t-total',money(t.total)); set('tb-total',money(t.total)); set('t-costo',money(t.costo)); set('t-util',money(t.util)+' ('+pct(t.mg)+')');
+  set('t-venta',money(t.venta)); set('t-mo',money(t.mo)); set('t-mat',money(t.mat)); set('t-srv',money(t.srv)); set('t-total',money(t.total)); set('tb-total',money(t.total)); set('t-costo',money(t.costo)); set('t-util',money(t.util)+' ('+pct(t.mg)+')');
 }
 function comprimir(file){
   return new Promise((res,rej)=>{ const img=new Image(), u=URL.createObjectURL(file);
@@ -948,7 +958,8 @@ function comprimir(file){
 }
 async function subirFotos(files){
   const q=curQ(); if(!q) return; const z=q.zonas.find(z=>z.id===fotoZona); if(!z) return;
-  for(const f of files){ try{ const id='f_'+uid(); await fotoPut(id,await comprimir(f)); z.fotos.push(id); S.fotosPend.push({id,cot:q.id}); }catch(e){ toast('No se pudo guardar una foto'); } }
+  const ln=fotoLinea?z.lineas.find(l=>l.id===fotoLinea):null, dest=ln?(ln.fotos=ln.fotos||[]):z.fotos;
+  for(const f of files){ try{ const id='f_'+uid(); await fotoPut(id,await comprimir(f)); dest.push(id); S.fotosPend.push({id,cot:q.id}); }catch(e){ toast('No se pudo guardar una foto'); } }
   save(); render(true);
 }
 

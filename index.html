@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#c2570c">
+<title>Cotizador de Obras</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<style>
+:root{
+  --bg:#f5f3ee;--card:#fff;--ink:#1d2430;--mut:#6a7280;--line:#e4e0d6;
+  --pri:#c2570c;--pri-ink:#fff;--ok:#2f7d4f;--warn:#a86a0a;--bad:#b3392f;--soft:#f0ece2;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171c;--card:#1d222a;--ink:#eceff4;--mut:#9aa3b2;--line:#2c333e;
+    --pri:#e8742a;--pri-ink:#1a1206;--ok:#5cc08a;--warn:#e0a548;--bad:#ee7b70;--soft:#262c36;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-bottom:calc(150px + env(safe-area-inset-bottom))}
+#app{max-width:720px;margin:0 auto;padding:12px 16px}
+h1{font-size:20px;margin:0}
+h2{font-size:17px;margin:0 0 10px}
+h2.sec{margin:22px 0 8px;font-size:15px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+small,.mut{color:var(--mut)}
+small{font-size:13px}
+a{color:inherit}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.back{text-decoration:none;color:var(--pri);font-weight:600;padding:8px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px;margin:0}
+.stat b{font-size:22px}
+.stat span{font-size:13px;color:var(--mut)}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:10px}
+input,select,textarea{display:block;width:100%;margin-top:4px;padding:12px;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;min-height:48px}
+textarea{min-height:90px;resize:vertical}
+.lock{pointer-events:none;opacity:.6}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-offset:0}
+.btn{display:block;width:100%;min-height:48px;padding:12px 16px;margin:0 0 12px;font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;text-align:center;text-decoration:none;cursor:pointer}
+.btn-primary{background:var(--pri);color:var(--pri-ink);border-color:var(--pri)}
+.btn-danger{color:var(--bad)}
+.btn.big{min-height:56px;font-size:18px;margin-bottom:14px}
+.btn.sm{display:inline-block;width:auto;min-height:40px;padding:8px 14px;margin:0 8px 0 0;font-size:14px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns .btn{margin:0}
+.chip{display:inline-block;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--soft);color:var(--mut);border:0;font-family:inherit;cursor:default}
+button.chip{cursor:pointer;padding:8px 12px;min-height:36px}
+.e-borrador{background:var(--soft)}
+.e-enviada{background:#e6eefb;color:#2b5ea8}
+.e-aceptada,.e-en_obra{background:#e1f3e8;color:var(--ok)}
+.e-terminada{background:#e9e4f6;color:#5b45a0}
+.e-rechazada{background:#f9e3e0;color:var(--bad)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .e-enviada{background:#1f2c44;color:#8fb3e8}:root:not([data-theme="light"]) .e-aceptada,:root:not([data-theme="light"]) .e-en_obra{background:#1d3328}:root:not([data-theme="light"]) .e-terminada{background:#2a2540;color:#b7a6ec}:root:not([data-theme="light"]) .e-rechazada{background:#3a2220}}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;text-decoration:none;color:inherit;width:100%;font:inherit;text-align:left;cursor:pointer;min-height:56px}
+.row>div:first-child{min-width:0}
+.row b{display:block}
+.row .r{text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.zhead{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.zhead input{margin:0;font-weight:700;font-size:17px}
+.zhead b{white-space:nowrap}
+.line{padding:10px 0;border-top:1px solid var(--line)}
+.lname{font-weight:600}
+.lname small{display:block;font-weight:400}
+.lctrl{display:flex;align-items:center;gap:8px;margin-top:6px}
+.lctrl input{width:96px;margin:0;text-align:right}
+.lctrl .u{flex:1;color:var(--mut);font-size:14px}
+.lctrl b{min-width:80px;text-align:right}
+.ib{width:44px;height:44px;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:10px;font-size:15px;cursor:pointer}
+.ib.on{background:var(--soft);color:var(--pri);border-color:var(--pri)}
+.zact{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.zact .btn{flex:1 1 30%;margin:0;min-height:44px;padding:8px;font-size:14px}
+.fotos{display:flex;gap:8px;overflow-x:auto;margin-top:10px}
+.fotos div{position:relative;flex:0 0 auto}
+.fotos img{width:84px;height:84px;object-fit:cover;border-radius:8px;display:block;background:var(--soft)}
+.fotos button{position:absolute;top:2px;right:2px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff}
+.totbar{position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:14px;z-index:5}
+.totbar>div{flex:1}
+.totbar small{display:block}
+.totbar b{font-size:20px}
+.totbar .btn{width:auto;margin:0;flex:none}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav.bottom a{flex:1;text-align:center;padding:10px 4px;text-decoration:none;color:var(--mut);font-size:12px;min-height:60px}
+nav.bottom a span{display:block;font-size:20px}
+nav.bottom a.on{color:var(--pri);font-weight:700}
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;align-items:flex-end;justify-content:center}
+#modal.on{display:flex}
+.sheet{background:var(--bg);width:100%;max-width:720px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px}
+.mh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.mh h2{margin:0}
+.cat{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom));background:#222;color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;z-index:30;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:1}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tags .chip{cursor:pointer;padding:8px 12px}
+.tags .chip.on{background:var(--pri);color:var(--pri-ink)}
+.kv{display:flex;justify-content:space-between;padding:5px 0}
+.kv.tot{font-weight:700;font-size:18px;border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--soft);color:var(--mut);margin-left:6px}
+.badge.ok{background:#e1f3e8;color:var(--ok)}
+ul.tight{margin:6px 0 0;padding-left:20px}
+ul.tight li{margin-bottom:4px}
+/* Documento para el cliente: siempre claro, también al imprimir */
+.doc{background:#fff;color:#111;border:1px solid var(--line);border-radius:6px;padding:22px;font-size:14px}
+.doc h1{font-size:22px;color:#111}
+.doc h3{margin:18px 0 6px;font-size:15px;border-bottom:2px solid #c2570c;padding-bottom:4px}
+.doc table{width:100%;border-collapse:collapse}
+.doc td,.doc th{padding:6px 4px;border-bottom:1px solid #e5e5e5;text-align:left;vertical-align:top}
+.doc th{font-size:12px;color:#666}
+.doc td.n,.doc th.n{text-align:right;white-space:nowrap}
+.doc .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:10px 0}
+.doc .totals{margin-top:14px;margin-left:auto;max-width:300px}
+.doc .totals .kv{padding:3px 0}
+.doc .totals .kv.tot{border-top:2px solid #111}
+.doc pre{white-space:pre-wrap;font:inherit;margin:6px 0 0}
+.doc .ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.doc .ph img{width:110px;height:110px;object-fit:cover;border-radius:4px}
+.doc .firma{display:flex;gap:30px;margin-top:40px}
+.doc .firma div{flex:1;border-top:1px solid #111;padding-top:4px;text-align:center;font-size:12px}
+@media print{
+  body{background:#fff;padding:0}
+  .no-print,nav.bottom,.totbar,#modal,#toast{display:none!important}
+  #app{max-width:none;padding:0}
+  .doc{border:0;padding:0}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav class="bottom" id="nav">
+  <a href="#/home" data-nav="home"><span>🏠</span>Inicio</a>
+  <a href="#/cots" data-nav="cots"><span>📋</span>Cotizaciones</a>
+  <a href="#/cat" data-nav="cat"><span>🧱</span>Catálogo</a>
+  <a href="#/set" data-nav="set"><span>⚙️</span>Ajustes</a>
+</nav>
+<div id="modal"></div>
+<div id="toast"></div>
+<input type="file" id="foto-in" accept="image/*" multiple hidden>
+
+<script src="supabase.js"></script>
+<script>
+'use strict';
+/* ================= Constantes =================
+   El catálogo, los paquetes y los precios iniciales (estimaciones) viven en la nube. */
+const ESTADOS = {borrador:'Borrador',enviada:'Enviada',aceptada:'Aceptada',en_obra:'En obra',terminada:'Terminada',rechazada:'Rechazada'};
+const UNIT_INT = ['pza','pto','saco','viaje','servicio','día'];
+const UNIDADES = ['m²','ml','pza','pto','saco','viaje','servicio','día','m³','kg'];
+const CATS = ['Demolición','Albañilería','Acabados','Pintura','Plomería','Electricidad','Cocinas','Por tiempo','Varios'];
+const SUPUESTOS = `• Los precios incluyen mano de obra y los materiales indicados en cada concepto.
+• No incluye reparación de instalaciones ocultas (tuberías, cableado, humedad) que se descubran durante la obra. Si aparecen, se cotizan aparte y se autorizan antes de hacerlas.
+• Cualquier trabajo adicional se aprueba por escrito (o por WhatsApp) antes de realizarse.
+• Anticipo del 50% para iniciar; el resto contra avance o entrega.
+• El cliente facilita acceso a agua y luz en la obra.`;
+
+/* ================= Nube (Supabase) y copia local =================
+   S es la copia de trabajo de este dispositivo y funciona sin internet. El motor de
+   sincronización compara S con lo último que se subió/bajó (snap) y envía solo lo que
+   cambió; después baja lo nuevo de los demás. Los costos solo viajan al dueño. */
+const SB_URL = 'https://migrpjzmezmpiytcfwku.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pZ3JwanptZXptcGl5dGNmd2t1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxMzAxMjYsImV4cCI6MjEwODcwNjEyNn0.MCORq96-JqXl0JvrhZ_Xdbvj1zPn3WHRr0WusXf3HfI';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const ROL = {dueno:'Dueño',cotizador:'Cotizador',albanil:'Albañil',pendiente:'Sin rol asignado'};
+const PRIV = ['margenObjetivo','aprendizaje'];
+let ME = null, S = null, snap = null, KEY = '', SKEY = '';
+let st = 'ok', syncing = false, again = false, pushT = null;
+
+function emptyState(){
+  return {v:2,rol:null,nombre:'',email:'',
+    config:{negocio:'Mi negocio de remodelaciones',moneda:'$',margenObjetivo:.30,imprevistos:.10,iva:0,pais:'52',vigencia:15,aprendizaje:true,docDetalle:true,supuestos:SUPUESTOS},
+    catalogo:[],paquetes:[],cotizaciones:[],log:[],fotosPend:[],fotosDel:[],equipo:[]};
+}
+const emptySnap = ()=>({cot:{},cie:{},cat:{},cfg:{},logT:[]});
+function loadLocal(uid){
+  KEY='cotizador_v2_'+uid; SKEY='cotizador_snap_v2_'+uid;
+  try{
+    const r=localStorage.getItem(KEY);
+    if(r){ const d=JSON.parse(r), b=emptyState(); d.config={...b.config,...d.config}; for(const k of ['catalogo','paquetes','cotizaciones','log','fotosPend','fotosDel','equipo']) d[k]=d[k]||[]; S=d; }
+    else S=emptyState();
+  }catch(e){ S=emptyState(); }
+  try{ snap={...emptySnap(),...JSON.parse(localStorage.getItem(SKEY)||'{}')}; }catch(e){ snap=emptySnap(); }
+}
+function persist(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); localStorage.setItem(SKEY,JSON.stringify(snap)); }catch(e){ toast('No se pudo guardar: almacenamiento lleno'); } }
+function save(){ persist(); refreshStatus(); schedulePush(); }
+function schedulePush(){ clearTimeout(pushT); pushT=setTimeout(()=>sync(),1500); }
+
+/* JSON estable (claves ordenadas): jsonb reordena las claves, así que no se puede comparar texto directo. */
+function cj(v){
+  if(Array.isArray(v)) return '['+v.map(cj).join(',')+']';
+  if(v&&typeof v==='object') return '{'+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+cj(v[k])).join(',')+'}';
+  return JSON.stringify(v);
+}
+function pack(q){ const d=JSON.parse(JSON.stringify(q)); delete d.cierre; d.zonas.forEach(z=>z.lineas.forEach(l=>delete l.costo)); return d; }
+const cotJ = q=>cj(pack(q));
+const cieJ = q=>cj(q.cierre||null);
+const catPub = c=>({id:c.id,cat:c.cat,nombre:c.nombre,unidad:c.unidad,precio:c.precio});
+const catCost = c=>({costo:c.costo,n:c.n||0,hist:c.hist||[]});
+const catJ = c=>cj(S.rol==='dueno'?{p:catPub(c),c:catCost(c)}:{p:catPub(c)});
+const isPerm = e=>e&&(e.code==='42501'||/row-level security|permission denied/i.test(e.message||''));
+
+function pendientes(){
+  if(!S||!ME||!S.rol||S.rol==='pendiente') return 0;
+  const o=S.rol==='dueno'; let n=0;
+  for(const q of S.cotizaciones){ if(cotJ(q)!==snap.cot[q.id]) n++; else if(o&&cieJ(q)!==(snap.cie[q.id]??cj(null))) n++; }
+  if(o){
+    for(const c of S.catalogo) if(catJ(c)!==snap.cat[c.id]) n++;
+    for(const k of Object.keys(S.config)) if(cj(S.config[k])!==snap.cfg[k]) n++;
+    n+=S.log.filter(e=>!snap.logT.includes(e.t)).length;
+    n+=Object.keys(snap.cot).filter(id=>!S.cotizaciones.some(q=>q.id===id)).length;
+  } else n+=S.catalogo.filter(c=>snap.cat[c.id]===undefined).length;
+  return n+S.fotosPend.length+S.fotosDel.length;
+}
+function statusTxt(){
+  const n=pendientes();
+  if(!navigator.onLine) return 'Sin conexión'+(n?' · '+n+' por enviar':'');
+  if(st==='sync') return 'Sincronizando…';
+  if(st==='err') return 'Error de sincronización';
+  return n?n+' por enviar':'Sincronizado ✓';
+}
+function refreshStatus(){ const t=statusTxt(); ['#sync-chip','#sync-line'].forEach(i=>{ const e=$(i); if(e) e.textContent=t; }); }
+function editando(){ const a=document.activeElement; return (a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))||$('#modal').classList.contains('on'); }
+
+async function all(table, order){
+  const ord = Array.isArray(order)?order:[order]; let out=[], from=0;
+  for(;;){
+    let q=sb.from(table).select('*').range(from,from+999); ord.forEach(o=>{ q=q.order(o); });
+    const {data,error}=await q; if(error) throw error;
+    out=out.concat(data); if(data.length<1000) break; from+=1000;
+  }
+  return out;
+}
+
+async function push(){
+  const owner=S.rol==='dueno';
+  // Cotizaciones (y su cierre de obra, solo dueño)
+  for(const q of S.cotizaciones){
+    const js=cotJ(q);
+    if(js!==snap.cot[q.id]){
+      const pushed=pack(q), had=snap.cot[q.id]!==undefined;
+      const upd=()=>sb.from('cotizaciones').update({estado:q.estado,data:pushed}).eq('id',q.id).select('folio');
+      let r = had ? await upd() : await sb.from('cotizaciones').insert({id:q.id,estado:q.estado,data:pushed}).select('folio');
+      if(r.error&&r.error.code==='23505') r=await upd();
+      if(r.error){ if(isPerm(r.error)){ snap.cot[q.id]=js; toast('Sin permiso para guardar '+q.folio); } else throw r.error; }
+      else if(!r.data.length){ snap.cot[q.id]=js; toast('Ese cambio no está permitido y se descartó'); }
+      else { q.folio=r.data[0].folio; pushed.folio=q.folio; snap.cot[q.id]=cj(pushed); }
+    }
+    if(owner && snap.cot[q.id]!==undefined && cieJ(q)!==(snap.cie[q.id]??cj(null))){
+      const j=cieJ(q);
+      const r = q.cierre ? await sb.from('cierres').upsert({cot_id:q.id,data:q.cierre}) : await sb.from('cierres').delete().eq('cot_id',q.id);
+      if(r.error) throw r.error; snap.cie[q.id]=j;
+    }
+  }
+  if(owner) for(const id of Object.keys(snap.cot)) if(!S.cotizaciones.some(q=>q.id===id)){
+    const r=await sb.from('cotizaciones').delete().eq('id',id); if(r.error&&!isPerm(r.error)) throw r.error;
+    delete snap.cot[id]; delete snap.cie[id];
+  }
+  // Catálogo
+  for(const c of S.catalogo){
+    const j=catJ(c); if(j===snap.cat[c.id]) continue;
+    if(owner){
+      let r=await sb.from('catalogo').upsert(catPub(c)); if(r.error) throw r.error;
+      r=await sb.from('catalogo_costos').upsert({id:c.id,...catCost(c)}); if(r.error) throw r.error;
+    } else if(snap.cat[c.id]===undefined){
+      const r=await sb.from('catalogo').insert(catPub(c)); if(r.error&&!isPerm(r.error)&&r.error.code!=='23505') throw r.error;
+    }
+    snap.cat[c.id]=j;
+  }
+  if(owner){
+    for(const id of Object.keys(snap.cat)) if(!S.catalogo.some(c=>c.id===id)){
+      const r=await sb.from('catalogo').delete().eq('id',id); if(r.error) throw r.error; delete snap.cat[id];
+    }
+    for(const k of Object.keys(S.config)){
+      const j=cj(S.config[k]); if(j===snap.cfg[k]) continue;
+      const r=await sb.from('config').upsert({clave:k,valor:S.config[k],privada:PRIV.includes(k)}); if(r.error) throw r.error; snap.cfg[k]=j;
+    }
+    for(const e of S.log.filter(e=>!snap.logT.includes(e.t))){
+      const r=await sb.from('aprendizaje_log').insert({data:e}); if(r.error) throw r.error; snap.logT.push(e.t);
+    }
+  }
+  // Fotos
+  for(const f of [...S.fotosPend]){
+    const d=await idbGet(f.id);
+    if(!d){ S.fotosPend=S.fotosPend.filter(x=>x!==f); continue; }
+    const blob=await (await fetch(d)).blob();
+    const r=await sb.storage.from('fotos').upload(f.cot+'/'+f.id+'.jpg',blob,{contentType:'image/jpeg',upsert:true});
+    if(r.error&&!isPerm(r.error)) throw r.error;
+    S.fotosPend=S.fotosPend.filter(x=>x!==f);
+  }
+  if(S.fotosDel.length){ const r=await sb.storage.from('fotos').remove(S.fotosDel); if(!r.error) S.fotosDel=[]; }
+}
+
+async function pull(){
+  const pf=await sb.from('perfiles').select('*').eq('id',ME.id).maybeSingle(); if(pf.error) throw pf.error;
+  S.rol=pf.data?.rol||'pendiente'; S.nombre=pf.data?.nombre||''; S.email=ME.email;
+  if(S.rol==='pendiente') return;
+  const owner=S.rol==='dueno', R={};
+  [R.catalogo,R.paquetes,R.config,R.cots]=await Promise.all([all('catalogo','id'),all('paquetes','id'),all('config','clave'),all('cotizaciones','id')]);
+  if(owner){
+    [R.costos,R.cc,R.cierres,R.equipo]=await Promise.all([all('catalogo_costos','id'),all('cotizacion_costos',['cot_id','linea_id']),all('cierres','cot_id'),all('perfiles','created_at')]);
+    const lg=await sb.from('aprendizaje_log').select('data').order('id',{ascending:false}).limit(50); if(lg.error) throw lg.error;
+    R.log=lg.data.map(r=>r.data);
+  }
+  mergePull(R,owner);
+}
+
+/* Lo remoto reemplaza lo local, salvo lo que tiene cambios pendientes de enviar. */
+function mergePull(R,owner){
+  const kmap=new Map((R.costos||[]).map(c=>[c.id,c])), lc=new Map(S.catalogo.map(c=>[c.id,c])), seen=new Set(), cat=[];
+  for(const r of R.catalogo){
+    seen.add(r.id); const k=kmap.get(r.id), l=lc.get(r.id);
+    const rc={id:r.id,cat:r.cat,nombre:r.nombre,unidad:r.unidad,precio:Number(r.precio),costo:owner?Number(k?.costo??0):0,n:owner?(k?.n||0):0,hist:owner?(k?.hist||[]):[]};
+    if(l&&snap.cat[r.id]!==undefined&&catJ(l)!==snap.cat[r.id]) cat.push(l);
+    else { cat.push(rc); snap.cat[r.id]=catJ(rc); }
+  }
+  for(const l of S.catalogo) if(!seen.has(l.id)){ if(snap.cat[l.id]===undefined) cat.push(l); else delete snap.cat[l.id]; }
+  S.catalogo=cat;
+
+  const cc=new Map((R.cc||[]).map(c=>[c.cot_id+'|'+c.linea_id,Number(c.costo)])), cie=new Map((R.cierres||[]).map(c=>[c.cot_id,c.data]));
+  const lq=new Map(S.cotizaciones.map(q=>[q.id,q])), seenq=new Set(), qs=[];
+  for(const r of R.cots){
+    seenq.add(r.id); const l=lq.get(r.id);
+    const sucio=l&&snap.cot[r.id]!==undefined&&(cotJ(l)!==snap.cot[r.id]||(owner&&cieJ(l)!==(snap.cie[r.id]??cj(null))));
+    if(sucio){ qs.push(l); continue; }
+    const q=JSON.parse(JSON.stringify(r.data)); q.id=r.id; q.folio=r.folio; q.estado=r.estado;
+    q.zonas.forEach(z=>z.lineas.forEach(li=>{ li.costo=owner?(cc.get(r.id+'|'+li.id)??0):0; }));
+    if(owner&&cie.has(r.id)) q.cierre=cie.get(r.id);
+    snap.cot[r.id]=cotJ(q); snap.cie[r.id]=cieJ(q); qs.push(q);
+  }
+  for(const l of S.cotizaciones) if(!seenq.has(l.id)){ if(snap.cot[l.id]===undefined) qs.push(l); else { delete snap.cot[l.id]; delete snap.cie[l.id]; } }
+  qs.sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+  S.cotizaciones=qs;
+
+  for(const r of R.config){
+    if(owner&&snap.cfg[r.clave]!==undefined&&cj(S.config[r.clave])!==snap.cfg[r.clave]) continue;
+    S.config[r.clave]=r.valor; snap.cfg[r.clave]=cj(r.valor);
+  }
+  S.paquetes=R.paquetes.map(p=>({id:p.id,nombre:p.nombre,params:p.params,calc:p.calc,items:p.items}));
+  if(owner){
+    const sin=S.log.filter(e=>!snap.logT.includes(e.t));
+    S.log=[...sin,...R.log].slice(0,50); snap.logT=R.log.map(e=>e.t); S.equipo=R.equipo;
+  }
+}
+
+async function sync(manual){
+  if(!ME||!S) return;
+  if(!navigator.onLine){ refreshStatus(); if(manual) toast('Sin conexión'); return; }
+  if(syncing){ again=true; return; }
+  syncing=true; st='sync'; refreshStatus();
+  const foto=()=>cj([S.rol,S.cotizaciones,S.catalogo,S.config,S.log,S.paquetes,S.equipo]);
+  const antes=foto();
+  try{
+    if(S.rol&&S.rol!=='pendiente') await push();
+    await pull();
+    st='ok'; if(manual) toast('Sincronizado');
+  }catch(e){ console.warn('sync',e); st='err'; if(manual) toast('No se pudo sincronizar'); }
+  syncing=false; persist(); refreshStatus();
+  if(antes!==foto()&&!editando()) render(true);
+  if(again){ again=false; schedulePush(); }
+}
+
+async function boot(){
+  const {data}=await sb.auth.getSession();
+  if(data.session) enter(data.session.user);
+  else {
+    let last=null; try{ last=JSON.parse(localStorage.getItem('cotizador_last_user')||'null'); }catch(e){}
+    if(last&&!navigator.onLine) enter(last); else render();
+  }
+  sb.auth.onAuthStateChange((ev,sess)=>{
+    if(ev==='SIGNED_IN'&&sess&&(!ME||ME.id!==sess.user.id)) setTimeout(()=>enter(sess.user),0);
+    if(ev==='SIGNED_OUT'){ ME=null; S=null; setTimeout(()=>{ location.hash='#/home'; render(); },0); }
+  });
+  window.addEventListener('online',()=>sync());
+  window.addEventListener('offline',refreshStatus);
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') sync(); });
+  setInterval(()=>{ if(document.visibilityState==='visible') sync(); },45000);
+}
+function enter(user){
+  ME={id:user.id,email:user.email};
+  try{ localStorage.setItem('cotizador_last_user',JSON.stringify(ME)); }catch(e){}
+  loadLocal(user.id); render(); sync();
+}
+
+const idb = new Promise((res,rej)=>{
+  try{ const r = indexedDB.open('cotizador_fotos',1); r.onupgradeneeded=()=>r.result.createObjectStore('f'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }catch(e){ rej(e); }
+});
+async function fotoPut(id,data){ const db = await idb; return new Promise((res,rej)=>{ const t = db.transaction('f','readwrite'); t.objectStore('f').put(data,id); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
+async function idbGet(id){ try{ const db = await idb; return await new Promise((res,rej)=>{ const r = db.transaction('f').objectStore('f').get(id); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }catch(e){ return null; } }
+async function fotoDel(id){ try{ const db = await idb; db.transaction('f','readwrite').objectStore('f').delete(id); }catch(e){} }
+async function fotoGet(id,cot){
+  const d = await idbGet(id); if(d) return d;
+  if(!cot||!ME||!navigator.onLine) return null;
+  try{
+    const {data,error} = await sb.storage.from('fotos').download(cot+'/'+id+'.jpg'); if(error||!data) return null;
+    const url = await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(data); });
+    await fotoPut(id,url); return url;
+  }catch(e){ return null; }
+}
+
+/* ================= Utilidades ================= */
+const $ = (s,el=document)=>el.querySelector(s);
+const uid = ()=>Math.random().toString(36).slice(2,9);
+const esc = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n=>S.config.moneda+Math.round(n||0).toLocaleString('es-MX');
+const pct = n=>(Math.round((n||0)*1000)/10)+'%';
+const norm = s=>String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const own = ()=>!!S&&S.rol==='dueno';
+const fechaTxt = iso=>new Date(iso).toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'});
+const up5 = n=>Math.ceil(n/5)*5;
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('on'),2200); }
+function setPath(o,path,v){ const k=path.split('.'); const last=k.pop(); for(const p of k) o=o[p]; o[last]=v; }
+function ev(expr,vars){
+  if(!/^[0-9a-z_+\-*/(). ]*$/i.test(expr)) return 0;
+  const names = Object.keys(vars);
+  try{ return Number(new Function(...names,'return ('+expr+')')(...names.map(n=>vars[n])))||0; }catch(e){ return 0; }
+}
+function redondea(unidad,x){ return UNIT_INT.includes(unidad) ? Math.ceil(x-1e-9) : Math.round(x*100)/100; }
+const cat_ = id=>S.catalogo.find(c=>c.id===id);
+
+/* ================= Cálculos de cotización ================= */
+function tot(q){
+  let costo=0, venta=0, opc=0;
+  q.zonas.forEach(z=>z.lineas.forEach(l=>{ if(l.opcional) opc+=l.qty*l.precio; else { costo+=l.qty*l.costo; venta+=l.qty*l.precio; } }));
+  const imp = venta*(q.imprevistos||0), desc = q.descuento||0;
+  const sub = venta+imp-desc, iva = sub*(S.config.iva||0);
+  return {costo,venta,imp,desc,sub,iva,total:sub+iva,util:sub-costo,mg:sub>0?(sub-costo)/sub:0,opc:opc*(1+(q.imprevistos||0))};
+}
+/* En el documento del cliente, los imprevistos van repartidos en los precios (no se ven como renglón). */
+const zdoc = (q,z)=>z.lineas.filter(l=>!l.opcional).reduce((s,l)=>s+l.qty*l.precio*(1+(q.imprevistos||0)),0);
+const zraw = z=>z.lineas.filter(l=>!l.opcional).reduce((s,l)=>s+l.qty*l.precio,0);
+
+function nuevaCot(){
+  const q = {id:uid(),folio:'C-nueva',fecha:new Date().toISOString(),estado:'borrador',
+    cliente:{nombre:'',tel:'',dir:''},titulo:'',zonas:[{id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''}],
+    imprevistos:S.config.imprevistos,descuento:0,supuestos:S.config.supuestos};
+  S.cotizaciones.unshift(q); save(); return q;
+}
+function addLinea(z,c,qty){ z.lineas.push({id:uid(),c:c.id,nombre:c.nombre,unidad:c.unidad,qty:qty,costo:c.costo,precio:c.precio,opcional:false}); }
+
+/* ================= Aprendizaje =================
+   Al cerrar una obra, cada costo real captura mueve el costo del concepto (promedio que
+   pesa más lo nuevo cuanto menos datos hay). Si el costo sube y el margen cae por debajo
+   del objetivo, el precio sube solo. También ajusta el % de imprevistos según cuánto se
+   desvió la obra de lo estimado. Todo queda en un historial visible. */
+function aprender(q){
+  const cambios=[]; const cfg=S.config; let estCosto=0, realCosto=0, capturadas=0;
+  q.zonas.forEach(z=>z.lineas.forEach(l=>{
+    if(l.opcional) return;
+    const est = l.qty*l.costo; estCosto+=est;
+    const r = q.cierre.reales[l.id];
+    if(r==null){ realCosto+=est; return; }
+    realCosto+=r; capturadas++;
+    const c = cat_(l.c); if(!c || l.qty<=0) return;
+    const unit = r/l.qty, n = c.n||0, w = Math.max(1/(n+2),0.2);
+    const costoAntes=c.costo, precioAntes=c.precio;
+    c.costo = Math.round((c.costo*(1-w)+unit*w)*100)/100;
+    c.n = n+1; c.hist = [...(c.hist||[]),Math.round(unit*100)/100].slice(-20);
+    const minimo = up5(c.costo/(1-cfg.margenObjetivo));
+    if(c.precio<minimo) c.precio = minimo;
+    cambios.push({nombre:c.nombre,unidad:c.unidad,costoAntes,costoDespues:c.costo,precioAntes,precioDespues:c.precio});
+  }));
+  realCosto += q.cierre.extras||0;
+  let imp=null;
+  if(estCosto>0 && (capturadas>0 || q.cierre.extras>0)){
+    const over = (realCosto-estCosto)/estCosto;
+    const objetivo = Math.min(.25,Math.max(.03,over*1.2));
+    const nuevo = Math.round((cfg.imprevistos*.7+objetivo*.3)*200)/200;
+    imp = {antes:cfg.imprevistos,despues:nuevo,desviacion:over};
+    cfg.imprevistos = nuevo;
+  }
+  q.cierre.resumen = {estCosto,realCosto,desv:estCosto>0?(realCosto-estCosto)/estCosto:0};
+  S.log.unshift({t:Date.now(),folio:q.folio,cambios,imp}); S.log = S.log.slice(0,50);
+  return {cambios,imp};
+}
+
+/* ================= Navegación ================= */
+const route = ()=>{ const [,v='home',id] = location.hash.split('/'); return {v,id}; };
+const curQ = ()=>S.cotizaciones.find(x=>x.id===route().id);
+let filtro='todas', catQ='', pickAdded=0, fotoZona=null, pickZona=null;
+
+function render(keep){
+  if(!ME||!S){ $('#app').innerHTML=vAuth(); $('#nav').style.display='none'; return; }
+  if(!S.rol||S.rol==='pendiente'){ $('#app').innerHTML=vEspera(); $('#nav').style.display='none'; return; }
+  const y = window.scrollY; const {v,id} = route(); const q = id ? S.cotizaciones.find(x=>x.id===id) : null;
+  const alb = S.rol==='albanil';
+  let h='';
+  if(alb){ h = v==='cot'&&q ? vObra(q) : v==='cots' ? vCots() : v==='set' ? vSet() : vHomeAlb(); }
+  else if(v==='cots') h=vCots(); else if(v==='cat') h=vCat(); else if(v==='set') h=vSet();
+  else if(v==='cot'&&q) h=vCot(q); else if(v==='doc'&&q) h=vDoc(q); else if(v==='cierre'&&q&&own()) h=vCierre(q);
+  else h=vHome();
+  $('#app').innerHTML=h;
+  document.querySelectorAll('nav.bottom a').forEach(a=>a.classList.toggle('on',a.dataset.nav===(['cot','doc','cierre'].includes(v)?'cots':v)));
+  $('#nav').style.display = v==='doc'?'none':'';
+  const lc=document.querySelector('nav.bottom a[data-nav="cat"]'); if(lc) lc.style.display = alb?'none':'';
+  hydrateFotos();
+  window.scrollTo(0, keep?y:0);
+}
+async function hydrateFotos(){ for(const im of document.querySelectorAll('img[data-foto]')){ const d = await fotoGet(im.dataset.foto, im.dataset.cot); if(d) im.src=d; } }
+window.addEventListener('hashchange',()=>{ closeModal(); render(); });
+
+/* ================= Vistas ================= */
+function rowQ(q){
+  return `<a class="row" href="#/cot/${q.id}"><div><b>${esc(q.cliente.nombre||'Sin nombre')}</b><small>${q.folio} · ${fechaTxt(q.fecha)}${q.titulo?' · '+esc(q.titulo):''}</small></div><div class="r">${S.rol==='albanil'?'':`<b>${money(tot(q).total)}</b>`}<span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></div></a>`;
+}
+
+function vHome(){
+  if(S.rol==='albanil') return vHomeAlb();
+  const qs=S.cotizaciones, ab=qs.filter(q=>['borrador','enviada'].includes(q.estado)), ob=qs.filter(q=>['aceptada','en_obra'].includes(q.estado));
+  const sum=a=>a.reduce((s,q)=>s+tot(q).total,0);
+  let h=`<header class="hd"><div><h1>${esc(S.config.negocio)}</h1><small>${esc(S.nombre||S.email||'')} · ${ROL[S.rol]}</small></div><button class="chip" id="sync-chip" data-act="sync">${statusTxt()}</button></header>
+  <button class="btn btn-primary big" data-act="nueva">+ Nueva cotización</button>
+  <div class="grid2" style="margin-bottom:12px"><div class="card stat"><small>Por cerrar</small><b>${money(sum(ab))}</b><span>${ab.length} cotizaciones</span></div><div class="card stat"><small>Obras en curso</small><b>${money(sum(ob))}</b><span>${ob.length} obras</span></div></div>`;
+  if(own()) h+=vInsights();
+  h+=`<h2 class="sec">Recientes</h2>`;
+  h+= qs.length ? qs.slice(0,6).map(rowQ).join('') : `<div class="card mut">Aún no hay cotizaciones. Toca “Nueva cotización” para empezar.</div>`;
+  return h;
+}
+
+function vInsights(){
+  const qs=S.cotizaciones, ganadas=qs.filter(q=>['aceptada','en_obra','terminada'].includes(q.estado)).length, perdidas=qs.filter(q=>q.estado==='rechazada');
+  const cierre = ganadas+perdidas.length ? ganadas/(ganadas+perdidas.length) : null;
+  const hechas = qs.filter(q=>q.estado==='terminada'&&q.cierre?.resumen);
+  const desv = hechas.length ? hechas.reduce((s,q)=>s+q.cierre.resumen.desv,0)/hechas.length : null;
+  const sinDatos = S.catalogo.filter(c=>!c.n).length;
+  const bajos = S.catalogo.filter(c=>c.precio>0&&(c.precio-c.costo)/c.precio<S.config.margenObjetivo-.03);
+  const mot={}; perdidas.forEach(q=>{ if(q.motivo) mot[q.motivo]=(mot[q.motivo]||0)+1; });
+  const motTxt = Object.entries(mot).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${esc(k)} (${v})`).join(', ');
+  const ult = S.log[0];
+  let h=`<section class="card"><h2>Lo que la app va aprendiendo</h2><ul class="tight">`;
+  h+=`<li>Imprevistos que se suman hoy a cada cotización: <b>${pct(S.config.imprevistos)}</b>${S.config.aprendizaje?' (se ajusta solo)':''}</li>`;
+  h+=`<li>${hechas.length} obra(s) cerrada(s)${desv!=null?` · desviación promedio de costo: <b>${desv>=0?'+':''}${pct(desv)}</b>`:''}</li>`;
+  if(cierre!=null) h+=`<li>Tasa de cierre: <b>${pct(cierre)}</b>${motTxt?` · rechazos por: ${motTxt}`:''}</li>`;
+  h+=`<li>${sinDatos} de ${S.catalogo.length} conceptos siguen con precio <b>estimado inicial</b>. Se afinan al cerrar obras.</li>`;
+  if(bajos.length) h+=`<li style="color:var(--warn)">${bajos.length} concepto(s) con margen por debajo de tu objetivo (${pct(S.config.margenObjetivo)}). Revísalos en el Catálogo.</li>`;
+  if(ult&&(ult.cambios.length||ult.imp)) h+=`<li>Último aprendizaje (${esc(ult.folio)}): ${ult.cambios.length} concepto(s) ajustado(s).</li>`;
+  return h+`</ul></section>`;
+}
+
+function vCots(){
+  const tags=['todas',...Object.keys(ESTADOS)];
+  const qs=S.cotizaciones.filter(q=>filtro==='todas'||q.estado===filtro);
+  return `<header class="hd"><h1>${S.rol==='albanil'?'Obras':'Cotizaciones'}</h1>${S.rol==='albanil'?'':'<button class="chip" data-act="nueva">+ Nueva</button>'}</header>
+  <div class="tags">${tags.map(t=>`<button class="chip ${t===filtro?'on':''}" data-act="filtro" data-f="${t}">${t==='todas'?'Todas':ESTADOS[t]}</button>`).join('')}</div>
+  ${qs.length?qs.map(rowQ).join(''):'<div class="card mut">No hay cotizaciones aquí.</div>'}`;
+}
+
+function vZona(q,z){
+  const lineas = z.lineas.map(l=>`
+   <div class="line"><div class="lname">${esc(l.nombre)}<small>${own()?'costo '+money(l.costo)+' · ':''}${money(l.precio)} / ${l.unidad}${l.opcional?' · <b>OPCIONAL (no suma)</b>':''}</small></div>
+   <div class="lctrl"><input class="qty" type="number" inputmode="decimal" step="any" value="${l.qty}" data-z="${z.id}" data-l="${l.id}"><span class="u">${l.unidad}</span><b id="ls-${l.id}">${money(l.qty*l.precio)}</b>
+   <button class="ib ${l.opcional?'on':''}" data-act="opt" data-z="${z.id}" data-l="${l.id}" title="Opcional">Op</button><button class="ib" data-act="dell" data-z="${z.id}" data-l="${l.id}" title="Quitar">✕</button></div></div>`).join('');
+  const fotos = z.fotos.length ? `<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-f="${f}">✕</button></div>`).join('')}</div>` : '';
+  return `<section class="card" id="z-${z.id}"><div class="zhead"><input data-zname="${z.id}" value="${esc(z.nombre)}"><b id="zs-${z.id}">${money(zraw(z))}</b></div>
+   ${lineas || '<div class="mut" style="padding:6px 0">Sin conceptos todavía.</div>'}
+   <div class="zact"><button class="btn" data-act="addpaq" data-z="${z.id}">+ Paquete</button><button class="btn" data-act="addcon" data-z="${z.id}">+ Concepto</button><button class="btn" data-act="addfoto" data-z="${z.id}">📷 Foto</button></div>
+   ${fotos}
+   <label style="margin-top:10px">Notas de esta zona (lo que se vio, medidas, acuerdos)<textarea data-znota="${z.id}" placeholder="Ej. Muro con humedad en la esquina, cliente quiere conservar la protección">${esc(z.notas)}</textarea></label>
+   <button class="btn btn-danger sm" data-act="delzona" data-z="${z.id}">Quitar zona</button></section>`;
+}
+
+function vCot(q){
+  const t=tot(q);
+  const estados=own()?['borrador','enviada','aceptada','en_obra','rechazada',...(q.estado==='terminada'?['terminada']:[])]:['borrador','enviada','aceptada','rechazada'];
+  const lock=!own()&&!['borrador','enviada'].includes(q.estado);
+  let h=`<header class="hd"><a class="back" href="#/cots">‹ Cotizaciones</a><span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></header>
+  ${lock?'<div class="card" style="color:var(--warn)">Esta cotización ya está cerrada: solo el dueño puede modificarla.</div>':''}
+  <div class="${lock?'lock':''}">
+  <section class="card"><h2>${q.folio} · Cliente</h2>
+   <label>Nombre<input data-path="cliente.nombre" value="${esc(q.cliente.nombre)}" placeholder="Nombre del cliente"></label>
+   <label>WhatsApp / teléfono<input data-path="cliente.tel" inputmode="tel" value="${esc(q.cliente.tel)}"></label>
+   <label>Dirección o colonia<input data-path="cliente.dir" value="${esc(q.cliente.dir)}"></label>
+   <label>Trabajo (descripción corta)<input data-path="titulo" value="${esc(q.titulo)}" placeholder="Ej. Remodelación de cocina y ventana"></label></section>`;
+  h+=q.zonas.map(z=>vZona(q,z)).join('');
+  h+=`<button class="btn" data-act="addzona">+ Agregar zona (cocina, baño, ventana…)</button>
+  <section class="card"><h2>Totales</h2>
+   <div class="kv"><span>Subtotal</span><b id="t-venta">${money(t.venta)}</b></div>
+   ${own()?`<label>Imprevistos (%) — se reparte en los precios
+     <input data-path="imprevistos" data-pct="1" type="number" inputmode="decimal" step="0.5" value="${Math.round(q.imprevistos*1000)/10}"></label>
+     <label>Descuento (${esc(S.config.moneda)})<input data-path="descuento" type="number" inputmode="decimal" value="${q.descuento||0}"></label>`:''}
+   <div class="kv tot"><span>Total al cliente</span><b id="t-total">${money(t.total)}</b></div>
+   ${own()?`<div class="kv"><small>Costo estimado</small><small id="t-costo">${money(t.costo)}</small></div><div class="kv"><small>Utilidad estimada</small><small id="t-util">${money(t.util)} (${pct(t.mg)})</small></div>`:''}
+  </section>
+  <section class="card"><label>Supuestos y exclusiones (se imprimen en la cotización)<textarea data-path="supuestos" style="min-height:150px">${esc(q.supuestos)}</textarea></label>
+   <label>Estado<select id="estado-sel">${estados.map(e=>`<option value="${e}" ${e===q.estado?'selected':''}>${ESTADOS[e]}</option>`).join('')}</select></label>
+   ${['aceptada','en_obra'].includes(q.estado)?`<a class="btn btn-primary" href="#/cierre/${q.id}">Cerrar obra y enseñarle a la app</a>`:''}
+   ${q.estado==='terminada'&&q.cierre?.resumen?`<div class="mut" style="margin-bottom:10px">Obra cerrada: costo estimado ${money(q.cierre.resumen.estCosto)}, real ${money(q.cierre.resumen.realCosto)} (${q.cierre.resumen.desv>=0?'+':''}${pct(q.cierre.resumen.desv)}).</div>`:''}
+   <div class="btns"><button class="btn" data-act="dup">Duplicar</button>${own()?'<button class="btn btn-danger" data-act="delcot">Eliminar</button>':''}</div></section>
+  </div>
+  <div class="totbar"><div><small>Total</small><b id="tb-total">${money(t.total)}</b></div><a class="btn btn-primary" href="#/doc/${q.id}">Ver / enviar</a></div>`;
+  return h;
+}
+
+function vDoc(q){
+  const t=tot(q), cfg=S.config, det=cfg.docDetalle, imp=1+(q.imprevistos||0);
+  const zonas=q.zonas.filter(z=>z.lineas.length).map(z=>{
+    const lin=z.lineas.filter(l=>!l.opcional);
+    const filas=lin.map(l=>det
+      ? `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td><td class="n">${money(l.qty*l.precio*imp)}</td></tr>`
+      : `<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td></tr>`).join('');
+    const fotos=z.fotos.length?`<div class="ph">${z.fotos.map(f=>`<img data-foto="${f}" data-cot="${q.id}" alt="">`).join('')}</div>`:'';
+    return `<h3>${esc(z.nombre)} <span style="float:right">${money(zdoc(q,z))}</span></h3><table><tr><th>Concepto</th><th class="n">Cantidad</th>${det?'<th class="n">Importe</th>':''}</tr>${filas}</table>${z.notas?`<pre>${esc(z.notas)}</pre>`:''}${fotos}`;
+  }).join('');
+  const opc=q.zonas.flatMap(z=>z.lineas.filter(l=>l.opcional));
+  const opcH=opc.length?`<h3>Opcionales (no incluidos en el total)</h3><table>${opc.map(l=>`<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td><td class="n">${money(l.qty*l.precio*imp)}</td></tr>`).join('')}</table>`:'';
+  return `<div class="no-print hd"><a class="back" href="#/cot/${q.id}">‹ Volver a editar</a></div>
+  <div class="no-print btns" style="margin-bottom:12px"><button class="btn btn-primary" data-act="wa">Enviar por WhatsApp</button><button class="btn" data-act="print">Imprimir / PDF</button><button class="btn" data-act="copy">Copiar texto</button><button class="btn" data-act="detalle">${det?'Quitar precios por concepto':'Mostrar precios por concepto'}</button></div>
+  <div class="doc"><h1>${esc(cfg.negocio)}</h1><div class="meta"><div><b>Cotización ${q.folio}</b><br>${fechaTxt(q.fecha)}<br>Vigencia: ${cfg.vigencia} días</div><div><b>${esc(q.cliente.nombre||'Cliente')}</b><br>${esc(q.cliente.tel)}<br>${esc(q.cliente.dir)}</div></div>
+  ${q.titulo?`<div><b>${esc(q.titulo)}</b></div>`:''}
+  ${zonas||'<p>Sin conceptos.</p>'}${opcH}
+  <div class="totals">${t.desc?`<div class="kv"><span>Subtotal</span><span>${money(t.venta+t.imp)}</span></div><div class="kv"><span>Descuento</span><span>-${money(t.desc)}</span></div>`:''}${t.iva?`<div class="kv"><span>IVA</span><span>${money(t.iva)}</span></div>`:''}<div class="kv tot"><span>TOTAL</span><span>${money(t.total)}</span></div></div>
+  <h3>Condiciones</h3><pre>${esc(q.supuestos)}</pre>
+  <div class="firma"><div>Cliente</div><div>${esc(cfg.negocio)}</div></div></div>`;
+}
+
+function vCierre(q){
+  const prev=q.cierre?.reales||{};
+  const filas=q.zonas.flatMap(z=>z.lineas.filter(l=>!l.opcional).map(l=>`<div class="line"><div class="lname">${esc(l.nombre)}<small>${l.qty} ${l.unidad} · estimado ${money(l.qty*l.costo)}</small></div>
+    <input class="real" type="number" inputmode="decimal" data-l="${l.id}" value="${prev[l.id]??''}" placeholder="Costo real ${Math.round(l.qty*l.costo)}"></div>`)).join('');
+  return `<header class="hd"><a class="back" href="#/cot/${q.id}">‹ Volver</a></header>
+  <section class="card"><h2>Cerrar obra · ${q.folio}</h2><p class="mut" style="margin-top:0">Anota lo que <b>realmente costó</b> cada concepto (material + mano de obra). Solo lo que captures le enseña a la app; lo que dejes vacío se toma como estimado y no cambia nada.</p>
+  ${filas}
+  <label style="margin-top:12px">Gastos extra que no estaban cotizados (${esc(S.config.moneda)})<input id="extras" type="number" inputmode="decimal" value="${q.cierre?.extras||''}" placeholder="0"></label></section>
+  <button class="btn btn-primary big" data-act="cerrar">Guardar y que la app aprenda</button>`;
+}
+
+function vCat(){
+  const t=norm(catQ), items=S.catalogo.filter(c=>norm(c.nombre+' '+c.cat).includes(t));
+  const grupos={}; items.forEach(c=>(grupos[c.cat]=grupos[c.cat]||[]).push(c));
+  let h=`<header class="hd"><h1>Catálogo</h1><button class="chip" data-act="newconcept">+ Concepto</button></header>
+   <input id="cat-search" placeholder="Buscar concepto" value="${esc(catQ)}" style="margin-bottom:12px">`;
+  Object.keys(grupos).sort((a,b)=>CATS.indexOf(a)-CATS.indexOf(b)).forEach(cat=>{
+    h+=`<div class="cat">${esc(cat)}</div>`+grupos[cat].map(c=>{
+      const mg=c.precio>0?(c.precio-c.costo)/c.precio:0;
+      return `<button class="row" data-act="editcon" data-c="${c.id}"><div><b>${esc(c.nombre)}</b><small>${own()?`costo ${money(c.costo)} · margen ${pct(mg)}`:c.unidad}</small></div><div class="r"><b>${money(c.precio)} / ${c.unidad}</b>${c.n?`<span class="badge ok">${c.n} obra${c.n>1?'s':''}</span>`:'<span class="badge">estimado</span>'}</div></button>`;
+    }).join('');
+  });
+  h+=`<h2 class="sec">Paquetes</h2>`+S.paquetes.map(p=>`<div class="row" style="cursor:default"><div><b>${esc(p.nombre)}</b><small>${p.items.length} conceptos · pide: ${p.params.map(x=>x.l).join(', ')}</small></div></div>`).join('');
+  return h;
+}
+
+function vAuth(){
+  return `<div class="card" style="margin-top:28px"><h1 style="margin-bottom:4px">Cotizador de Obras</h1>
+   <p class="mut" style="margin-top:0">Entra con tu correo y contraseña.</p>
+   <div id="auth-msg" style="min-height:20px;margin-bottom:8px;font-size:14px"></div>
+   <label>Correo<input id="au-mail" type="email" autocomplete="email" inputmode="email"></label>
+   <label>Contraseña<input id="au-pass" type="password" autocomplete="current-password"></label>
+   <label>Tu nombre (solo si creas una cuenta)<input id="au-nom" autocomplete="name"></label>
+   <button class="btn btn-primary" data-act="login">Entrar</button>
+   <button class="btn" data-act="signup">Crear cuenta nueva</button></div>`;
+}
+function vEspera(){
+  const sinRol = S&&S.rol==='pendiente';
+  return `<div class="card" style="margin-top:28px"><h1 style="margin-bottom:8px">${sinRol?'Falta asignarte un rol':'Preparando tu cuenta…'}</h1>
+   <p class="mut">${sinRol?'Tu cuenta ya existe. El dueño debe darte acceso como cotizador o albañil desde Ajustes → Equipo. Cuando lo haga, toca “Actualizar”.':'La primera vez necesitas internet para descargar el catálogo y tus datos.'}</p>
+   <button class="btn btn-primary" data-act="sync">Actualizar</button><button class="btn" data-act="logout">Cerrar sesión</button></div>`;
+}
+function vHomeAlb(){
+  const ob=S.cotizaciones.filter(q=>['aceptada','en_obra'].includes(q.estado));
+  return `<header class="hd"><div><h1>${esc(S.config.negocio)}</h1><small>${esc(S.nombre||S.email||'')} · ${ROL[S.rol]}</small></div><button class="chip" id="sync-chip" data-act="sync">${statusTxt()}</button></header>
+  <h2 class="sec">Obras</h2>`+(ob.length?ob.map(rowQ).join(''):'<div class="card mut">Todavía no hay obras asignadas.</div>');
+}
+function vObra(q){
+  const zonas=q.zonas.filter(z=>z.lineas.length||z.notas||z.fotos.length).map(z=>`<section class="card"><h2>${esc(z.nombre)}</h2>
+    ${z.notas?`<p style="white-space:pre-wrap;margin-top:0">${esc(z.notas)}</p>`:''}
+    ${z.lineas.filter(l=>!l.opcional).map(l=>`<div class="line"><div class="lname">${esc(l.nombre)}</div><div class="mut">${l.qty} ${l.unidad}</div></div>`).join('')}
+    ${z.fotos.length?`<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</section>`).join('');
+  return `<header class="hd"><a class="back" href="#/home">‹ Obras</a><span class="chip e-${q.estado}">${ESTADOS[q.estado]}</span></header>
+  <section class="card"><h2>${esc(q.cliente.nombre||'Cliente')}</h2><div>${esc(q.titulo)}</div><div class="mut">${esc(q.cliente.dir)}</div>
+  ${q.cliente.tel?`<a class="btn" style="margin-top:10px" href="tel:${esc(q.cliente.tel)}">Llamar al cliente</a>`:''}</section>${zonas}`;
+}
+function vEquipo(){
+  const op=['pendiente','cotizador','albanil'];
+  return (S.equipo||[]).map(p=>`<div class="line"><div class="lname">${esc(p.nombre||p.email||'Sin nombre')}<small>${esc(p.email||'')}</small></div>
+    ${p.id===ME.id?'<div class="mut">Dueño (tú)</div>':`<select data-rol="${p.id}">${op.map(r=>`<option value="${r}" ${p.rol===r?'selected':''}>${ROL[r]}</option>`).join('')}</select>`}</div>`).join('') || '<span class="mut">Aún no hay personas registradas.</span>';
+}
+
+function vSet(){
+  const c=S.config, d=own();
+  let h=`<header class="hd"><h1>Ajustes</h1></header>
+  <section class="card"><h2>Mi cuenta</h2>
+   <div class="kv"><span>Nombre</span><b>${esc(S.nombre||'—')}</b></div>
+   <div class="kv"><span>Correo</span><span>${esc(S.email||'')}</span></div>
+   <div class="kv"><span>Rol</span><b>${ROL[S.rol]}</b></div>
+   <div class="kv"><span>Estado</span><span id="sync-line">${statusTxt()}</span></div>
+   <div class="btns" style="margin-top:10px"><button class="btn" data-act="sync">Sincronizar ahora</button><button class="btn btn-danger" data-act="logout">Cerrar sesión</button></div></section>`;
+  if(!d) return h;
+  h+=`<section class="card"><h2>Negocio</h2>
+   <label>Nombre (aparece en la cotización)<input data-cfg="negocio" value="${esc(c.negocio)}"></label>
+   <label>Símbolo de moneda<input data-cfg="moneda" value="${esc(c.moneda)}"></label>
+   <label>Código de país para WhatsApp<input data-cfg="pais" inputmode="numeric" value="${esc(c.pais)}"></label>
+   <label>Vigencia de la cotización (días)<input data-cfg="vigencia" type="number" value="${c.vigencia}"></label></section>
+   <section class="card"><h2>Reglas de precio</h2>
+   <label>Margen objetivo (%) — si un costo sube, el precio se ajusta para mantenerlo<input data-cfg="margenObjetivo" data-pct="1" type="number" step="1" value="${Math.round(c.margenObjetivo*100)}"></label>
+   <label>Imprevistos por defecto (%) — la app lo recalcula con cada obra<input data-cfg="imprevistos" data-pct="1" type="number" step="0.5" value="${Math.round(c.imprevistos*1000)/10}"></label>
+   <label>IVA (%) — 0 si no lo desglosas<input data-cfg="iva" data-pct="1" type="number" step="1" value="${Math.round(c.iva*100)}"></label>
+   <label>Aprendizaje automático<select data-cfg="aprendizaje" data-bool="1"><option value="1" ${c.aprendizaje?'selected':''}>Activado</option><option value="0" ${!c.aprendizaje?'selected':''}>Desactivado</option></select></label></section>
+   <section class="card"><h2>Equipo</h2><p class="mut" style="margin-top:0"><small>Cada persona crea su cuenta en la app con su correo. Aquí le asignas qué puede hacer.</small></p>${vEquipo()}</section>
+   <section class="card"><label>Texto base de “Supuestos y exclusiones” para cotizaciones nuevas<textarea data-cfg="supuestos" style="min-height:150px">${esc(c.supuestos)}</textarea></label></section>
+   <section class="card"><h2>Historial de aprendizaje</h2>${vLog()}</section>
+   <section class="card"><h2>Datos</h2><div class="btns"><button class="btn" data-act="export">Descargar respaldo</button><button class="btn" data-act="refetch">Bajar todo de nuevo</button></div>
+   <p class="mut" style="margin:10px 0 0"><small>Tus datos están en la nube y en este dispositivo. El respaldo no incluye fotos.</small></p></section>`;
+  return h;
+}
+function vLog(){
+  if(!S.log.length) return '<span class="mut">Aún no hay obras cerradas. Cuando cierres una, aquí verás qué ajustó la app.</span>';
+  return S.log.slice(0,8).map(e=>`<div style="margin-bottom:10px"><b>${esc(e.folio)}</b> · ${new Date(e.t).toLocaleDateString('es-MX')}<ul class="tight">`+
+    e.cambios.map(c=>`<li>${esc(c.nombre)}: costo ${money(c.costoAntes)} → ${money(c.costoDespues)}${c.precioDespues!==c.precioAntes?`, precio ${money(c.precioAntes)} → ${money(c.precioDespues)}`:''}</li>`).join('')+
+    (e.imp?`<li>Imprevistos: ${pct(e.imp.antes)} → ${pct(e.imp.despues)} (desviación ${e.imp.desviacion>=0?'+':''}${pct(e.imp.desviacion)})</li>`:'')+`</ul></div>`).join('');
+}
+
+/* ================= Modales ================= */
+function modal(html){ const m=$('#modal'); m.innerHTML=`<div class="sheet">${html}</div>`; m.classList.add('on'); }
+function closeModal(){ const m=$('#modal'); m.classList.remove('on'); m.innerHTML=''; }
+$('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeModal(); });
+
+function pickConcept(zid){
+  pickZona=zid; pickAdded=0;
+  modal(`<div class="mh"><h2>Agregar concepto</h2><button class="chip" data-act="mclose">Listo</button></div>
+   <input id="q-search" placeholder="Buscar (boquilla, piso, pintura…)" autocomplete="off" style="margin-bottom:8px"><div id="q-list"></div>
+   <button class="btn" data-act="newconcept" data-z="${zid}" style="margin-top:12px">+ Crear concepto que no está en la lista</button>`);
+  fillList('');
+}
+function fillList(t){
+  const items=S.catalogo.filter(c=>norm(c.nombre+' '+c.cat).includes(norm(t)));
+  const g={}; items.forEach(c=>(g[c.cat]=g[c.cat]||[]).push(c));
+  $('#q-list').innerHTML = Object.keys(g).sort((a,b)=>CATS.indexOf(a)-CATS.indexOf(b)).map(cat=>`<div class="cat">${esc(cat)}</div>`+g[cat].map(c=>`<button class="row" data-act="pick" data-c="${c.id}"><div><b>${esc(c.nombre)}</b></div><div class="r"><b>${money(c.precio)} / ${c.unidad}</b></div></button>`).join('')).join('') || '<div class="mut">Sin resultados. Puedes crear el concepto abajo.</div>';
+}
+
+function conceptForm(c,zid){
+  const nuevo=!c; c=c||{nombre:'',unidad:'m²',cat:'Varios',costo:'',precio:''};
+  modal(`<div class="mh"><h2>${nuevo?'Concepto nuevo':'Editar concepto'}</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+   <label>Nombre<input id="cf-nombre" value="${esc(c.nombre)}" placeholder="Ej. Demoler jardinera"></label>
+   <label>Categoría<select id="cf-cat">${CATS.map(x=>`<option ${x===c.cat?'selected':''}>${x}</option>`).join('')}</select></label>
+   <label>Unidad de cobro<select id="cf-uni">${UNIDADES.map(x=>`<option ${x===c.unidad?'selected':''}>${x}</option>`).join('')}</select></label>
+   <label>Precio de venta (${esc(S.config.moneda)} por unidad)<input id="cf-precio" type="number" inputmode="decimal" value="${c.precio}"></label>
+   ${own()?`<label>Costo para ti (${esc(S.config.moneda)} por unidad)${nuevo?' — si lo dejas vacío se calcula con tu margen objetivo':''}<input id="cf-costo" type="number" inputmode="decimal" value="${c.costo}"></label>`:''}
+   ${!nuevo&&c.n?`<p class="mut"><small>Aprendido de ${c.n} obra(s). Últimos costos reales por unidad: ${(c.hist||[]).slice(-6).map(x=>money(x)).join(', ')}</small></p>`:''}
+   <button class="btn btn-primary" data-act="savecon" data-c="${nuevo?'':c.id}" data-z="${zid||''}">Guardar</button>
+   ${!nuevo&&own()?`<button class="btn btn-danger" data-act="delcon" data-c="${c.id}">Eliminar del catálogo</button>`:''}`);
+}
+
+function pickPaquete(zid){
+  modal(`<div class="mh"><h2>Elegir paquete</h2><button class="chip" data-act="mclose">Cerrar</button></div>`+
+    S.paquetes.map(p=>`<button class="row" data-act="paq" data-p="${p.id}" data-z="${zid}"><div><b>${esc(p.nombre)}</b><small>${p.items.length} conceptos</small></div></button>`).join(''));
+}
+function paqForm(zid,pid){
+  const p=S.paquetes.find(x=>x.id===pid);
+  modal(`<div class="mh"><h2>${esc(p.nombre)}</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+   <p class="mut" style="margin-top:0">Captura las medidas y la app arma todos los conceptos. Después puedes ajustar cada cantidad o quitar lo que no aplique.</p>
+   ${p.params.map(x=>`<label>${esc(x.l)}<input id="pp-${x.k}" type="number" inputmode="decimal" step="any" value="${x.d}"></label>`).join('')}
+   <button class="btn btn-primary" data-act="paqadd" data-p="${pid}" data-z="${zid}">Agregar a la cotización</button>`);
+}
+
+/* ================= Acciones ================= */
+function compartirTexto(q){
+  const t=tot(q), lin=q.zonas.filter(z=>z.lineas.length).map(z=>`• ${z.nombre}: ${money(zdoc(q,z))}`).join('\n');
+  return `*${S.config.negocio}*\nCotización ${q.folio}${q.cliente.nombre?'\nCliente: '+q.cliente.nombre:''}${q.titulo?'\n'+q.titulo:''}\n\n${lin}\n\n*TOTAL: ${money(t.total)}*\nVigencia: ${S.config.vigencia} días\n\n${q.supuestos}`;
+}
+function download(name,text){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'application/json'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+
+const ACT = {
+  nueva(){ const q=nuevaCot(); location.hash='#/cot/'+q.id; },
+  filtro(b){ filtro=b.dataset.f; render(true); },
+  async login(){
+    const e=$('#au-mail').value.trim(), p=$('#au-pass').value;
+    if(!e||!p){ authMsg('Escribe tu correo y contraseña'); return; }
+    authMsg('Entrando…',false);
+    const {error}=await sb.auth.signInWithPassword({email:e,password:p});
+    if(error) authMsg(authErr(error));
+  },
+  async signup(){
+    const e=$('#au-mail').value.trim(), p=$('#au-pass').value, n=$('#au-nom').value.trim();
+    if(!e||!p){ authMsg('Escribe tu correo y una contraseña'); return; }
+    if(p.length<6){ authMsg('La contraseña debe tener al menos 6 caracteres'); return; }
+    authMsg('Creando cuenta…',false);
+    const {data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{nombre:n}}});
+    if(error){ authMsg(authErr(error)); return; }
+    if(!data.session) authMsg('Cuenta creada. Revisa tu correo para confirmarla y después entra aquí.',false);
+  },
+  async logout(){
+    const n=pendientes();
+    if(n&&!confirm('Tienes '+n+' cambio(s) sin enviar a la nube. Se quedarán en este dispositivo hasta que vuelvas a entrar. ¿Cerrar sesión?')) return;
+    try{ await sb.auth.signOut(); }catch(e){ ME=null; S=null; render(); }
+  },
+  sync(){ sync(true); },
+  refetch(){
+    if(!confirm('Se descargará todo de nuevo desde la nube. Lo que no se haya enviado ('+pendientes()+') se perderá. ¿Continuar?')) return;
+    S=emptyState(); snap=emptySnap(); persist(); render(); sync(true);
+  },
+  mclose(){ closeModal(); render(true); },
+  addzona(){ const q=curQ(); q.zonas.push({id:uid(),nombre:'Zona '+(q.zonas.length+1),lineas:[],fotos:[],notas:''}); save(); render(true); },
+  delzona(b){ const q=curQ(); if(q.zonas.length<2){ toast('Debe quedar al menos una zona'); return; } if(!confirm('¿Quitar esta zona y sus conceptos?')) return; q.zonas=q.zonas.filter(z=>z.id!==b.dataset.z); save(); render(true); },
+  addcon(b){ pickConcept(b.dataset.z); },
+  pick(b){ const q=curQ(), z=q.zonas.find(z=>z.id===pickZona), c=cat_(b.dataset.c); addLinea(z,c,1); pickAdded++; save(); toast('Agregado: '+c.nombre+(pickAdded>1?' ('+pickAdded+')':'')); },
+  addpaq(b){ pickPaquete(b.dataset.z); },
+  paq(b){ paqForm(b.dataset.z,b.dataset.p); },
+  paqadd(b){
+    const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z), p=S.paquetes.find(x=>x.id===b.dataset.p), vars={};
+    p.params.forEach(x=>vars[x.k]=parseFloat($('#pp-'+x.k).value)||0);
+    Object.entries(p.calc).forEach(([k,e])=>vars[k]=ev(e,vars));
+    let n=0; p.items.forEach(([cid,expr])=>{ const c=cat_(cid); if(!c) return; const qty=redondea(c.unidad,ev(expr,vars)); if(qty>0){ addLinea(z,c,qty); n++; } });
+    save(); closeModal(); render(true); toast(n+' conceptos agregados');
+  },
+  opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
+  dell(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
+  addfoto(b){ fotoZona=b.dataset.z; $('#foto-in').click(); },
+  delfoto(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z); z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
+  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); }); }); S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
+  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); q.zonas.forEach(z=>z.fotos.forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
+  motivo(b){ const q=curQ(); q.estado='rechazada'; q.motivo=b.dataset.m; save(); closeModal(); render(true); },
+  cerrar(){
+    const q=curQ(); const reales={};
+    document.querySelectorAll('.real').forEach(i=>{ if(i.value!=='' && !isNaN(parseFloat(i.value))) reales[i.dataset.l]=parseFloat(i.value); });
+    q.cierre={fecha:new Date().toISOString(),reales,extras:parseFloat($('#extras').value)||0};
+    q.estado='terminada';
+    let r={cambios:[],imp:null};
+    if(S.config.aprendizaje) r=aprender(q); else q.cierre.resumen={estCosto:0,realCosto:0,desv:0};
+    save();
+    const lista=r.cambios.map(c=>`<li>${esc(c.nombre)}: costo ${money(c.costoAntes)} → <b>${money(c.costoDespues)}</b>${c.precioDespues!==c.precioAntes?`, precio ${money(c.precioAntes)} → <b>${money(c.precioDespues)}</b>`:''}</li>`).join('');
+    modal(`<div class="mh"><h2>Esto aprendí</h2></div>${S.config.aprendizaje?(lista||r.imp?`<ul class="tight">${lista}${r.imp?`<li>Imprevistos para próximas cotizaciones: ${pct(r.imp.antes)} → <b>${pct(r.imp.despues)}</b></li>`:''}</ul>`:'<p class="mut">No capturaste costos reales, así que no cambié nada.</p>'):'<p class="mut">El aprendizaje está desactivado en Ajustes.</p>'}<button class="btn btn-primary" data-act="fin" style="margin-top:12px">Entendido</button>`);
+  },
+  fin(){ closeModal(); location.hash='#/cots'; },
+  wa(){ const q=curQ(); let tel=(q.cliente.tel||'').replace(/\D/g,''); if(tel.length===10) tel=S.config.pais+tel; window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(compartirTexto(q)),'_blank'); if(q.estado==='borrador'){ q.estado='enviada'; save(); } },
+  print(){ window.print(); },
+  copy(){ navigator.clipboard.writeText(compartirTexto(curQ())).then(()=>toast('Texto copiado'),()=>toast('No se pudo copiar')); },
+  detalle(){ S.config.docDetalle=!S.config.docDetalle; save(); render(true); },
+  newconcept(b){ conceptForm(null,b.dataset.z); },
+  editcon(b){ if(!own()){ toast('Solo el dueño edita precios'); return; } conceptForm(cat_(b.dataset.c)); },
+  savecon(b){
+    const nombre=$('#cf-nombre').value.trim(); const precio=parseFloat($('#cf-precio').value);
+    if(!nombre||!(precio>0)){ toast('Pon nombre y precio'); return; }
+    let costo = own()&&$('#cf-costo')?parseFloat($('#cf-costo').value):NaN; if(!(costo>=0)) costo=Math.round(precio*(1-S.config.margenObjetivo));
+    let c = b.dataset.c ? cat_(b.dataset.c) : null;
+    if(c){ Object.assign(c,{nombre,cat:$('#cf-cat').value,unidad:$('#cf-uni').value,precio,costo}); }
+    else { c={id:'u_'+uid(),nombre,cat:$('#cf-cat').value,unidad:$('#cf-uni').value,precio,costo,n:0}; S.catalogo.push(c);
+      if(b.dataset.z){ const q=curQ(); if(q){ addLinea(q.zonas.find(z=>z.id===b.dataset.z),c,1); pickAdded++; } } }
+    save(); if(b.dataset.z){ closeModal(); render(true); toast('Concepto creado y agregado'); } else { closeModal(); render(true); }
+  },
+  delcon(b){ if(!confirm('¿Eliminar del catálogo? Las cotizaciones ya hechas no cambian.')) return; S.catalogo=S.catalogo.filter(c=>c.id!==b.dataset.c); save(); closeModal(); render(true); },
+  export(){ download('cotizador-respaldo-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(S)); },
+
+};
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-act]'); if(!b) return; const f=ACT[b.dataset.act]; if(f){ e.preventDefault(); f(b,e); } });
+
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.classList.contains('qty')){
+    const q=curQ(), l=q.zonas.find(z=>z.id===t.dataset.z).lineas.find(l=>l.id===t.dataset.l);
+    l.qty=parseFloat(t.value)||0; save(); updTotals(q);
+  } else if(t.id==='q-search') fillList(t.value);
+  else if(t.id==='cat-search'){ catQ=t.value; const pos=t.selectionStart; render(true); const n=$('#cat-search'); n.focus(); n.setSelectionRange(pos,pos); }
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.path){
+    const q=curQ(); let v=t.value; if(t.type==='number') v=(parseFloat(v)||0)/(t.dataset.pct?100:1);
+    setPath(q,t.dataset.path,v); save(); updTotals(q);
+  } else if(t.dataset.cfg){
+    let v=t.value; if(t.type==='number') v=(parseFloat(v)||0)/(t.dataset.pct?100:1); if(t.dataset.bool) v=v==='1';
+    S.config[t.dataset.cfg]=v; save();
+  } else if(t.dataset.zname){ curQ().zonas.find(z=>z.id===t.dataset.zname).nombre=t.value; save(); }
+  else if(t.dataset.znota){ curQ().zonas.find(z=>z.id===t.dataset.znota).notas=t.value; save(); }
+  else if(t.id==='estado-sel'){
+    const q=curQ();
+    if(t.value==='rechazada'){ modal(`<div class="mh"><h2>¿Por qué se perdió?</h2><button class="chip" data-act="mclose">Cancelar</button></div>${['Precio','Tiempo','Eligió a otro','Sin respuesta','Otro'].map(m=>`<button class="btn" data-act="motivo" data-m="${m}">${m}</button>`).join('')}`); t.value=q.estado; return; }
+    q.estado=t.value; save(); render(true);
+  } else if(t.id==='foto-in'){ subirFotos(t.files); t.value=''; }
+  else if(t.dataset.rol){ cambiarRol(t); }
+});
+async function cambiarRol(t){
+  const {error}=await sb.from('perfiles').update({rol:t.value}).eq('id',t.dataset.rol);
+  if(error){ toast('No se pudo cambiar el rol'); return; }
+  const p=S.equipo.find(x=>x.id===t.dataset.rol); if(p) p.rol=t.value; persist(); toast('Rol actualizado');
+}
+function authMsg(m,bad=true){ const e=$('#auth-msg'); if(e){ e.textContent=m; e.style.color=bad?'var(--bad)':'var(--mut)'; } }
+function authErr(e){
+  const m=e.message||'';
+  if(/Invalid login/i.test(m)) return 'Correo o contraseña incorrectos';
+  if(/not confirmed/i.test(m)) return 'Falta confirmar tu correo (revisa tu bandeja)';
+  if(/rate limit/i.test(m)) return 'Demasiados intentos. Espera unos minutos.';
+  if(/network|fetch/i.test(m)) return 'Sin conexión';
+  return m||'No se pudo completar';
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.id==='au-pass') ACT.login(); });
+function updTotals(q){
+  const t=tot(q), set=(id,v)=>{ const el=$('#'+id); if(el) el.textContent=v; };
+  q.zonas.forEach(z=>{ set('zs-'+z.id,money(zraw(z))); z.lineas.forEach(l=>set('ls-'+l.id,money(l.qty*l.precio))); });
+  set('t-venta',money(t.venta)); set('t-total',money(t.total)); set('tb-total',money(t.total)); set('t-costo',money(t.costo)); set('t-util',money(t.util)+' ('+pct(t.mg)+')');
+}
+function comprimir(file){
+  return new Promise((res,rej)=>{ const img=new Image(), u=URL.createObjectURL(file);
+    img.onload=()=>{ const k=Math.min(1,1100/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg',.72)); };
+    img.onerror=rej; img.src=u; });
+}
+async function subirFotos(files){
+  const q=curQ(); if(!q) return; const z=q.zonas.find(z=>z.id===fotoZona); if(!z) return;
+  for(const f of files){ try{ const id='f_'+uid(); await fotoPut(id,await comprimir(f)); z.fotos.push(id); S.fotosPend.push({id,cot:q.id}); }catch(e){ toast('No se pudo guardar una foto'); } }
+  save(); render(true);
+}
+
+if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+boot();
+</script>
+</body>
+</html>

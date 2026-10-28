@@ -69,6 +69,7 @@ button.chip{cursor:pointer;padding:8px 12px;min-height:36px}
 .lctrl{display:flex;align-items:center;gap:8px;margin-top:6px}
 .lctrl input{width:96px;margin:0;text-align:right}
 .lctrl .u{flex:1;color:var(--mut);font-size:14px}
+.lctrl.pr{margin:2px 0 6px}
 .lctrl b{min-width:80px;text-align:right}
 .ib{width:44px;height:44px;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:10px;font-size:15px;cursor:pointer}
 .ib.on{background:var(--soft);color:var(--pri);border-color:var(--pri)}
@@ -548,9 +549,12 @@ function vCots(){
   ${qs.length?qs.map(rowQ).join(''):'<div class="card mut">No hay cotizaciones aquí.</div>'}`;
 }
 
+function txtMargen(l){ const m=l.precio>0?(l.precio-l.costo)/l.precio:0; return 'costo '+money(l.costo)+' · margen '+pct(m); }
+function precioCambiado(l){ const c=cat_(l.c); return !!c && Math.abs(c.precio-l.precio)>0.001; }
 function vZona(q,z){
   const lineas = z.lineas.map(l=>`
-   <div class="line"><div class="lname">${esc(l.nombre)}<small>${own()?'costo '+money(l.costo)+' · ':''}${money(l.precio)} / ${l.unidad}${l.opcional?' · <b>OPCIONAL (no suma)</b>':''}</small></div>
+   <div class="line"><div class="lname">${esc(l.nombre)}<small${own()?` id="lm-${l.id}"`:''}>${own()?txtMargen(l):money(l.precio)+' / '+l.unidad}${l.opcional?' · <b>OPCIONAL (no suma)</b>':''}</small></div>
+   ${own()?`<div class="lctrl pr"><span class="u">Precio por ${l.unidad}${precioCambiado(l)?' · <b style="color:var(--warn)">ajustado</b> (catálogo '+money(cat_(l.c).precio)+')':''}</span><input class="prc" type="number" inputmode="decimal" step="any" value="${l.precio}" data-z="${z.id}" data-l="${l.id}"></div>`:''}
    <div class="lctrl"><input class="qty" type="number" inputmode="decimal" step="any" value="${l.qty}" data-z="${z.id}" data-l="${l.id}"><span class="u">${l.unidad}</span><b id="ls-${l.id}">${money(l.qty*l.precio)}</b>
    <button class="ib ${l.opcional?'on':''}" data-act="opt" data-z="${z.id}" data-l="${l.id}" title="Opcional">Op</button><button class="ib" data-act="dell" data-z="${z.id}" data-l="${l.id}" title="Quitar">✕</button></div></div>`).join('');
   const fotos = z.fotos.length ? `<div class="fotos">${z.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-z="${z.id}" data-f="${f}">✕</button></div>`).join('')}</div>` : '';
@@ -635,6 +639,8 @@ function vCat(){
   const t=norm(catQ), items=S.catalogo.filter(c=>norm(c.nombre+' '+c.cat).includes(t));
   const grupos={}; items.forEach(c=>(grupos[c.cat]=grupos[c.cat]||[]).push(c));
   let h=`<header class="hd"><h1>Catálogo</h1><button class="chip" data-act="newconcept">+ Concepto</button></header>
+   <p class="mut" style="margin-top:0;font-size:14px">${own()?'Toca un concepto para cambiar su precio o su costo. Los cambios aplican a cotizaciones nuevas; las ya hechas no se alteran. Dentro de una cotización también puedes ajustar el precio de un solo renglón.':'Solo el dueño cambia los precios.'}</p>
+   ${own()?'<button class="btn" data-act="bulk">Subir o bajar precios en bloque (%)</button>':''}
    <input id="cat-search" placeholder="Buscar concepto" value="${esc(catQ)}" style="margin-bottom:12px">`;
   Object.keys(grupos).sort((a,b)=>CATS.indexOf(a)-CATS.indexOf(b)).forEach(cat=>{
     h+=`<div class="cat">${esc(cat)}</div>`+grupos[cat].map(c=>{
@@ -827,6 +833,23 @@ const ACT = {
     save(); closeModal(); render(true); toast(n+' conceptos agregados en “'+nombre+'”');
     const el=document.getElementById('z-'+z.id); if(el) el.scrollIntoView({block:'start'});
   },
+  bulk(){
+    modal(`<div class="mh"><h2>Ajustar precios en bloque</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+     <p class="mut" style="margin-top:0">Sube o baja el precio de venta de todo un grupo. Se redondea a múltiplos de 5.</p>
+     <label>Grupo<select id="bk-cat"><option value="">Todo el catálogo</option>${CATS.map(c=>`<option>${c}</option>`).join('')}</select></label>
+     <label>Porcentaje (ej. 5 sube 5%, -5 baja 5%)<input id="bk-pct" type="number" inputmode="decimal" step="0.5" value="5"></label>
+     <label>También mover el costo<select id="bk-costo"><option value="0">No, solo el precio</option><option value="1">Sí, mismo porcentaje</option></select></label>
+     <button class="btn btn-primary" data-act="bulkok">Aplicar</button>`);
+  },
+  bulkok(){
+    const cat=$('#bk-cat').value, p=parseFloat($('#bk-pct').value), conCosto=$('#bk-costo').value==='1';
+    if(!isFinite(p)||p===0||p<=-90||p>200){ toast('Escribe un porcentaje válido'); return; }
+    const items=S.catalogo.filter(c=>!cat||c.cat===cat);
+    if(!items.length){ toast('No hay conceptos en ese grupo'); return; }
+    if(!confirm('Se cambiarán '+items.length+' precios ('+(p>0?'+':'')+p+'%). ¿Continuar?')) return;
+    items.forEach(c=>{ c.precio=Math.max(5,Math.round(c.precio*(1+p/100)/5)*5); if(conCosto) c.costo=Math.round(c.costo*(1+p/100)*100)/100; });
+    save(); closeModal(); render(true); toast(items.length+' precios actualizados');
+  },
   toggle(b){ const id=b.dataset.z; if(colapsadas.has(id)) colapsadas.delete(id); else colapsadas.add(id); render(true); },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
   dell(b){ const z=curQ().zonas.find(z=>z.id===b.dataset.z); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
@@ -871,7 +894,10 @@ document.addEventListener('click',e=>{ const b=e.target.closest('[data-act]'); i
 
 document.addEventListener('input',e=>{
   const t=e.target;
-  if(t.classList.contains('qty')){
+  if(t.classList.contains('prc')){
+    const q=curQ(), l=q.zonas.find(z=>z.id===t.dataset.z).lineas.find(l=>l.id===t.dataset.l);
+    l.precio=Math.max(0,parseFloat(t.value)||0); save(); updTotals(q);
+  } else if(t.classList.contains('qty')){
     const q=curQ(), l=q.zonas.find(z=>z.id===t.dataset.z).lineas.find(l=>l.id===t.dataset.l);
     l.qty=parseFloat(t.value)||0; save(); updTotals(q);
   } else if(t.id==='q-search') fillList(t.value);
@@ -882,6 +908,7 @@ document.addEventListener('change',e=>{
   if(t.dataset.path){
     const q=curQ(); let v=t.value; if(t.type==='number') v=(parseFloat(v)||0)/(t.dataset.pct?100:1);
     setPath(q,t.dataset.path,v); save(); updTotals(q);
+  } else if(t.classList.contains('prc')){ render(true);
   } else if(t.dataset.cfg){
     let v=t.value; if(t.type==='number') v=(parseFloat(v)||0)/(t.dataset.pct?100:1); if(t.dataset.bool) v=v==='1';
     S.config[t.dataset.cfg]=v; save();
@@ -911,7 +938,7 @@ function authErr(e){
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.id==='au-pass') ACT.login(); });
 function updTotals(q){
   const t=tot(q), set=(id,v)=>{ const el=$('#'+id); if(el) el.textContent=v; };
-  q.zonas.forEach(z=>{ set('zs-'+z.id,money(zraw(z))); z.lineas.forEach(l=>set('ls-'+l.id,money(l.qty*l.precio))); });
+  q.zonas.forEach(z=>{ set('zs-'+z.id,money(zraw(z))); z.lineas.forEach(l=>{ set('ls-'+l.id,money(l.qty*l.precio)); if(own()) set('lm-'+l.id,txtMargen(l)); }); });
   set('t-venta',money(t.venta)); set('t-total',money(t.total)); set('tb-total',money(t.total)); set('t-costo',money(t.costo)); set('t-util',money(t.util)+' ('+pct(t.mg)+')');
 }
 function comprimir(file){

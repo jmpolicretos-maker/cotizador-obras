@@ -45,6 +45,7 @@ textarea{min-height:90px;resize:vertical}
 .tabs button.on{background:var(--pri);color:var(--pri-ink);border-color:var(--pri)}
 .lev-info{background:var(--soft);border-radius:10px;padding:10px;margin-bottom:10px;font-size:14px}
 .medida{font-size:18px}
+.row.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}
 .aud{margin:8px 0}
 .aud audio{width:100%;height:40px}
 .exrow{display:grid;grid-template-columns:minmax(0,1fr) 76px 68px 44px;gap:6px;margin-bottom:6px;align-items:center}
@@ -193,7 +194,7 @@ function loadLocal(uid){
   KEY='cotizador_v2_'+uid; SKEY='cotizador_snap_v2_'+uid;
   try{
     const r=localStorage.getItem(KEY);
-    if(r){ const d=JSON.parse(r), b=emptyState(); d.config={...b.config,...d.config}; for(const k of ['catalogo','paquetes','cotizaciones','log','fotosPend','fotosDel','equipo']) d[k]=d[k]||[]; S=d; }
+    if(r){ const d=JSON.parse(r), b=emptyState(); d.config={...b.config,...d.config}; for(const k of ['catalogo','paquetes','cotizaciones','log','fotosPend','fotosDel','equipo']) d[k]=d[k]||[]; S=d; S.cotizaciones.forEach(armar); }
     else S=emptyState();
   }catch(e){ S=emptyState(); }
   try{ snap={...emptySnap(),...JSON.parse(localStorage.getItem(SKEY)||'{}')}; }catch(e){ snap=emptySnap(); }
@@ -208,7 +209,7 @@ function cj(v){
   if(v&&typeof v==='object') return '{'+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+cj(v[k])).join(',')+'}';
   return JSON.stringify(v);
 }
-function pack(q){ const d=JSON.parse(JSON.stringify(q)); delete d.cierre; d.zonas.forEach(z=>z.lineas.forEach(l=>delete l.costo)); return d; }
+function pack(q){ const d=JSON.parse(JSON.stringify(q)); delete d.cierre; (d.opciones||[]).forEach(o=>o.zonas.forEach(z=>z.lineas.forEach(l=>delete l.costo))); return d; }
 const cotJ = q=>cj(pack(q));
 const cieJ = q=>cj(q.cierre||null);
 const catPub = c=>({id:c.id,cat:c.cat,nombre:c.nombre,unidad:c.unidad,precio:c.precio,tipo:c.tipo||'mo'});
@@ -339,8 +340,8 @@ function mergePull(R,owner){
     seenq.add(r.id); const l=lq.get(r.id);
     const sucio=l&&snap.cot[r.id]!==undefined&&(cotJ(l)!==snap.cot[r.id]||(owner&&cieJ(l)!==(snap.cie[r.id]??cj(null))));
     if(sucio){ qs.push(l); continue; }
-    const q=JSON.parse(JSON.stringify(r.data)); q.id=r.id; q.folio=r.folio; q.estado=r.estado;
-    q.zonas.forEach(z=>z.lineas.forEach(li=>{ li.costo=owner?(cc.get(r.id+'|'+li.id)??0):0; }));
+    const q=JSON.parse(JSON.stringify(r.data)); q.id=r.id; q.folio=r.folio; q.estado=r.estado; armar(q);
+    q.opciones.forEach(o=>o.zonas.forEach(z=>z.lineas.forEach(li=>{ li.costo=owner?(cc.get(r.id+'|'+li.id)??0):0; })));
     if(owner&&cie.has(r.id)) q.cierre=cie.get(r.id);
     snap.cot[r.id]=cotJ(q); snap.cie[r.id]=cieJ(q); qs.push(q);
   }
@@ -436,21 +437,22 @@ const cat_ = id=>S.catalogo.find(c=>c.id===id);
 
 /* ================= Cálculos de cotización ================= */
 const tipoDe = l=>l.tipo||cat_(l.c)?.tipo||'mo';
-function tot(q){
+function tot(q,o){
+  o=o||activeOpt(q);
   let costo=0, venta=0, opc=0; const por={mo:0,material:0,servicio:0};
-  q.zonas.forEach(z=>z.lineas.forEach(l=>{ if(l.opcional) opc+=l.qty*l.precio; else { costo+=l.qty*l.costo; venta+=l.qty*l.precio; por[tipoDe(l)]+=l.qty*l.precio; } }));
-  const imp = venta*(q.imprevistos||0), desc = q.descuento||0;
+  o.zonas.forEach(z=>z.lineas.forEach(l=>{ if(l.opcional) opc+=l.qty*l.precio; else { costo+=l.qty*l.costo; venta+=l.qty*l.precio; por[tipoDe(l)]+=l.qty*l.precio; } }));
+  const imp = venta*(o.imprevistos||0), desc = o.descuento||0;
   const sub = venta+imp-desc, iva = sub*(S.config.iva||0);
-  return {costo,venta,mo:por.mo,mat:por.material,srv:por.servicio,imp,desc,sub,iva,total:sub+iva,util:sub-costo,mg:sub>0?(sub-costo)/sub:0,opc:opc*(1+(q.imprevistos||0))};
+  return {costo,venta,mo:por.mo,mat:por.material,srv:por.servicio,imp,desc,sub,iva,total:sub+iva,util:sub-costo,mg:sub>0?(sub-costo)/sub:0,opc:opc*(1+(o.imprevistos||0))};
 }
 /* En el documento del cliente, los imprevistos van repartidos en los precios (no se ven como renglón). */
 const zdoc = (q,z)=>z.lineas.filter(l=>!l.opcional).reduce((s,l)=>s+l.qty*l.precio*(1+(q.imprevistos||0)),0);
 const zraw = z=>z.lineas.filter(l=>!l.opcional).reduce((s,l)=>s+l.qty*l.precio,0);
 
 function nuevaCot(){
-  const q = {id:uid(),folio:'C-nueva',fecha:new Date().toISOString(),estado:'borrador',
-    cliente:{nombre:'',tel:'',dir:''},titulo:'',lev:{areas:[],notas:'',fotos:[]},zonas:[{id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''}],
-    imprevistos:S.config.imprevistos,descuento:0,supuestos:S.config.supuestos};
+  const q = armar({id:uid(),folio:'C-nueva',fecha:new Date().toISOString(),estado:'borrador',
+    cliente:{nombre:'',tel:'',dir:''},titulo:'',lev:{areas:[],notas:'',fotos:[]},
+    opciones:[{id:uid(),letra:'A',nombre:'Opción A',estado:'borrador',zonas:[{id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''}],imprevistos:S.config.imprevistos,descuento:0,supuestos:S.config.supuestos}]});
   S.cotizaciones.unshift(q); save(); return q;
 }
 function addLinea(z,c,qty){ z.lineas.push({id:uid(),c:c.id,nombre:c.nombre,unidad:c.unidad,tipo:c.tipo||'mo',qty:qty,costo:c.costo,precio:c.precio,opcional:false,fotos:[]}); }
@@ -544,8 +546,37 @@ function infoArea(q,ar,z,ro){
    ${audiosHtml(q,ar.audios,false,'')}
    ${ro?'':`<button class="btn" style="margin:8px 0 0" data-act="paqarea" data-z="${z.id}">⚡ Cotizar con estas medidas</button>`}</div>`;
 }
-function etapa(q){ return tabProy[q.id] || (q.zonas.some(z=>z.lineas.length)?'cot':'lev'); }
-function estadoTxt(q){ return q.estado==='borrador' ? (q.zonas.some(z=>z.lineas.length)?'Cotizando':'Levantamiento') : ESTADOS[q.estado]; }
+const hayLineas = q=>q.opciones.some(o=>o.zonas.some(z=>z.lineas.length));
+function etapa(q){ return tabProy[q.id] || (hayLineas(q)?'cot':'lev'); }
+function estadoTxt(q){ return q.estado==='borrador' ? (hayLineas(q)?'Cotizando':'Levantamiento') : ESTADOS[q.estado]; }
+/* Un proyecto guarda varias cotizaciones (opciones A, B…). Para no reescribir todo, q.zonas,
+   q.imprevistos, q.descuento y q.supuestos apuntan a la cotización que se está editando. */
+const opcActiva = {};
+const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+function defaultOpt(q){ return q.opciones.find(o=>['aceptada','en_obra','terminada'].includes(o.estado)) || q.opciones[0]; }
+function activeOpt(q){ return q.opciones.find(o=>o.id===opcActiva[q.id]) || defaultOpt(q); }
+const folioOpc = (q,o)=>q.folio+'-'+o.letra;
+function armar(q){
+  if(!q.opciones){ // formato anterior: una sola cotización dentro del proyecto
+    q.opciones=[{id:uid(),letra:'A',nombre:'Opción A',estado:q.estado||'borrador',zonas:q.zonas||[{id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''}],imprevistos:q.imprevistos??S.config.imprevistos,descuento:q.descuento||0,supuestos:q.supuestos||S.config.supuestos}];
+    delete q.zonas; delete q.imprevistos; delete q.descuento; delete q.supuestos;
+  }
+  ['zonas','imprevistos','descuento','supuestos'].forEach(k=>Object.defineProperty(q,k,{configurable:true,enumerable:false,get(){ return activeOpt(q)[k]; },set(v){ activeOpt(q)[k]=v; }}));
+  return q;
+}
+function recalcEstado(q){
+  const es=q.opciones.map(o=>o.estado);
+  let e=['terminada','en_obra','aceptada'].find(x=>es.includes(x));
+  if(!e) e=es.every(x=>x==='rechazada')?'rechazada':es.includes('enviada')?'enviada':'borrador';
+  q.estado=e;
+  const rej=q.opciones.filter(o=>o.estado==='rechazada'&&o.motivo);
+  if(e==='rechazada'&&rej.length) q.motivo=rej[rej.length-1].motivo; else delete q.motivo;
+}
+function setEstadoOpc(q,o,v){
+  o.estado=v;
+  if(v==='aceptada'||v==='en_obra') q.opciones.forEach(x=>{ if(x!==o&&['borrador','enviada'].includes(x.estado)){ x.estado='rechazada'; x.motivo='Eligió otra opción'; } });
+  recalcEstado(q);
+}
 function crearZonasDeAreas(q){
   const L=lev(q); let n=0;
   q.zonas=q.zonas.filter(z=>z.areaId||z.lineas.length||z.fotos.length||z.notas);
@@ -563,7 +594,7 @@ function render(keep){
   let h='';
   if(alb){ h = v==='cot'&&q ? vObra(q) : v==='cots' ? vCots() : v==='set' ? vSet() : vHomeAlb(); }
   else if(v==='cots') h=vCots(); else if(v==='cat') h=vCat(); else if(v==='set') h=vSet();
-  else if(v==='cot'&&q) h=vCot(q); else if(v==='doc'&&q) h=vDoc(q); else if(v==='cierre'&&q&&own()) h=vCierre(q);
+  else if(v==='cot'&&q) h=vCot(q); else if(v==='doc'&&q) h=vDoc(q); else if(v==='cierre'&&q&&own()){ const ac=q.opciones.find(o=>['aceptada','en_obra'].includes(o.estado)); if(ac) opcActiva[q.id]=ac.id; h=vCierre(q); }
   else h=vHome();
   $('#app').innerHTML=h;
   document.querySelectorAll('nav.bottom a').forEach(a=>a.classList.toggle('on',a.dataset.nav===(['cot','doc','cierre'].includes(v)?'cots':v)));
@@ -681,24 +712,28 @@ function vLev(q){
   return h;
 }
 function vCot(q){
-  const t=tot(q), et=etapa(q);
-  const estados=own()?['borrador','enviada','aceptada','en_obra','rechazada',...(q.estado==='terminada'?['terminada']:[])]:['borrador','enviada','aceptada','rechazada'];
+  const act=activeOpt(q), t=tot(q,act), et=etapa(q);
+  const estados=own()?['borrador','enviada','aceptada','en_obra','rechazada',...(act.estado==='terminada'?['terminada']:[])]:['borrador','enviada','aceptada','rechazada'];
   const lock=!own()&&!['borrador','enviada'].includes(q.estado);
   const L=levOf(q), sinZona=L.areas.filter(a=>!q.zonas.some(z=>z.areaId===a.id)).length;
   let h=`<header class="hd"><a class="back" href="#/cots">‹ Proyectos</a><span class="chip e-${q.estado}">${estadoTxt(q)}</span></header>
-  <div class="tabs"><button class="${et==='lev'?'on':''}" data-act="tab" data-t="lev">1 · Levantamiento</button><button class="${et==='cot'?'on':''}" data-act="tab" data-t="cot">2 · Cotización</button></div>
+  <div class="tabs"><button class="${et==='lev'?'on':''}" data-act="tab" data-t="lev">1 · Levantamiento</button><button class="${et==='cot'?'on':''}" data-act="tab" data-t="cot">2 · Cotizaciones${q.opciones.length>1?' ('+q.opciones.length+')':''}</button></div>
   ${lock?'<div class="card" style="color:var(--warn)">Este proyecto ya está cerrado: solo el dueño puede modificarlo.</div>':''}
   <div class="${lock?'lock':''}">`;
   if(et==='lev'){
     const nf=L.areas.reduce((n,a)=>n+(a.fotos||[]).length,0)+(L.fotos||[]).length;
     return h+vLev(q)+`</div><div class="totbar"><div><small>${L.areas.length} área(s)</small><b>${nf} foto(s)</b></div><button class="btn btn-primary" data-act="pasarcot">Pasar a cotizar →</button></div>`;
   }
-  h+=`<section class="card"><div class="kv"><b>${esc(q.cliente.nombre||'Sin nombre')}</b><small>${q.folio}</small></div><small>${esc(q.titulo)}${q.cliente.dir?' · '+esc(q.cliente.dir):''}</small></section>`;
-  if(sinZona) h+=`<div class="card"><b>${sinZona} área(s) del levantamiento todavía no están en la cotización.</b><button class="btn btn-primary" style="margin:10px 0 0" data-act="pasarcot">Agregarlas a la cotización</button></div>`;
+  h+=`<section class="card"><div class="kv"><b>${esc(q.cliente.nombre||'Sin nombre')}</b><small>${q.folio}</small></div><small>${esc(q.titulo)}${q.cliente.dir?' · '+esc(q.cliente.dir):''}</small></section>
+  <section class="card"><h2>Cotizaciones de este proyecto</h2>
+   ${q.opciones.map(o=>{ const to=tot(q,o); return `<button class="row ${o.id===act.id?'on':''}" data-act="selopc" data-o="${o.id}"><div><b>${esc(o.nombre)}</b><small>${folioOpc(q,o)} · ${ESTADOS[o.estado]}</small></div><div class="r"><b>${money(to.total)}</b>${own()?`<small>margen ${pct(to.mg)}</small>`:''}</div></button>`; }).join('')}
+   <button class="btn" data-act="addopc" style="margin:4px 0 0">+ Nueva cotización (otra opción o versión)</button></section>
+  <section class="card"><label>Nombre de la cotización que estás editando (${folioOpc(q,act)})<input data-opname="${act.id}" value="${esc(act.nombre)}"></label></section>`;
+  if(sinZona) h+=`<div class="card"><b>${sinZona} área(s) del levantamiento todavía no están en esta cotización.</b><button class="btn btn-primary" style="margin:10px 0 0" data-act="pasarcot">Agregarlas</button></div>`;
   h+=q.zonas.map(z=>vZona(q,z)).join('');
   h+=`<button class="btn btn-primary" data-act="addpaq" data-z="">+ Agregar otro paquete (otra ventana, baño, cocina…)</button>
   <button class="btn" data-act="addzona">+ Agregar zona vacía</button>
-  <section class="card"><h2>Totales</h2>
+  <section class="card"><h2>Totales · ${esc(act.nombre)}</h2>
    <div class="kv"><span>Subtotal</span><b id="t-venta">${money(t.venta)}</b></div>
    <div class="kv"><small>· Mano de obra</small><small id="t-mo">${money(t.mo)}</small></div>
    <div class="kv"><small>· Materiales</small><small id="t-mat">${money(t.mat)}</small></div>
@@ -709,13 +744,14 @@ function vCot(q){
    <div class="kv tot"><span>Total al cliente</span><b id="t-total">${money(t.total)}</b></div>
    ${own()?`<div class="kv"><small>Costo estimado</small><small id="t-costo">${money(t.costo)}</small></div><div class="kv"><small>Utilidad estimada</small><small id="t-util">${money(t.util)} (${pct(t.mg)})</small></div>`:''}
   </section>
-  <section class="card"><label>Supuestos y exclusiones (se imprimen en la cotización)<textarea data-path="supuestos" style="min-height:150px">${esc(q.supuestos)}</textarea></label>
-   <label>Estado<select id="estado-sel">${estados.map(e=>`<option value="${e}" ${e===q.estado?'selected':''}>${ESTADOS[e]}</option>`).join('')}</select></label>
+  <section class="card"><label>Supuestos y exclusiones (se imprimen en esta cotización)<textarea data-path="supuestos" style="min-height:150px">${esc(q.supuestos)}</textarea></label>
+   <label>Estado de esta cotización<select id="estado-sel">${estados.map(e=>`<option value="${e}" ${e===act.estado?'selected':''}>${ESTADOS[e]}</option>`).join('')}</select></label>
    ${['aceptada','en_obra'].includes(q.estado)?`<a class="btn btn-primary" href="#/cierre/${q.id}">Cerrar obra y enseñarle a la app</a>`:''}
    ${q.estado==='terminada'&&q.cierre?.resumen?`<div class="mut" style="margin-bottom:10px">Obra cerrada: costo estimado ${money(q.cierre.resumen.estCosto)}, real ${money(q.cierre.resumen.realCosto)} (${q.cierre.resumen.desv>=0?'+':''}${pct(q.cierre.resumen.desv)}).</div>`:''}
-   <div class="btns"><button class="btn" data-act="dup">Duplicar</button>${own()?'<button class="btn btn-danger" data-act="delcot">Eliminar</button>':''}</div></section>
+   ${q.opciones.length>1?'<button class="btn btn-danger" data-act="delopc">Quitar esta cotización</button>':''}
+   <div class="btns"><button class="btn" data-act="dup">Duplicar proyecto</button>${own()?'<button class="btn btn-danger" data-act="delcot">Eliminar proyecto</button>':''}</div></section>
   </div>
-  <div class="totbar"><div><small>Total</small><b id="tb-total">${money(t.total)}</b></div><a class="btn btn-primary" href="#/doc/${q.id}">Ver / enviar</a></div>`;
+  <div class="totbar"><div><small>${esc(act.nombre)}</small><b id="tb-total">${money(t.total)}</b></div><a class="btn btn-primary" href="#/doc/${q.id}">Ver / enviar</a></div>`;
   return h;
 }
 
@@ -735,7 +771,7 @@ function vDoc(q){
   const opcH=opc.length?`<h3>Opcionales (no incluidos en el total)</h3><table>${opc.map(l=>`<tr><td>${esc(l.nombre)}</td><td class="n">${l.qty} ${l.unidad}</td><td class="n">${money(l.qty*l.precio*imp)}</td></tr>`).join('')}</table>`:'';
   return `<div class="no-print hd"><a class="back" href="#/cot/${q.id}">‹ Volver a editar</a></div>
   <div class="no-print btns" style="margin-bottom:12px"><button class="btn btn-primary" data-act="wa">Enviar por WhatsApp</button><button class="btn" data-act="print">Imprimir / PDF</button><button class="btn" data-act="copy">Copiar texto</button><button class="btn" data-act="detalle">${det?'Quitar precios por concepto':'Mostrar precios por concepto'}</button></div>
-  <div class="doc"><h1>${esc(cfg.negocio)}</h1><div class="meta"><div><b>Cotización ${q.folio}</b><br>${fechaTxt(q.fecha)}<br>Vigencia: ${cfg.vigencia} días</div><div><b>${esc(q.cliente.nombre||'Cliente')}</b><br>${esc(q.cliente.tel)}<br>${esc(q.cliente.dir)}</div></div>
+  <div class="doc"><h1>${esc(cfg.negocio)}</h1><div class="meta"><div><b>Cotización ${folioOpc(q,activeOpt(q))}</b>${q.opciones.length>1?'<br>'+esc(activeOpt(q).nombre):''}<br>${fechaTxt(q.fecha)}<br>Vigencia: ${cfg.vigencia} días</div><div><b>${esc(q.cliente.nombre||'Cliente')}</b><br>${esc(q.cliente.tel)}<br>${esc(q.cliente.dir)}</div></div>
   ${q.titulo?`<div><b>${esc(q.titulo)}</b></div>`:''}
   ${zonas||'<p>Sin conceptos.</p>'}${opcH}
   <div class="mut" style="margin-top:10px;text-align:right;font-size:13px">Mano de obra ${money(t.mo*imp)} · Materiales ${money(t.mat*imp)}${t.srv?' · Servicios '+money(t.srv*imp):''}</div>
@@ -947,7 +983,7 @@ function audiosHtml(q,lista,borrar,attrs){
 /* ================= Acciones ================= */
 function compartirTexto(q){
   const t=tot(q), lin=q.zonas.filter(z=>z.lineas.length).map(z=>`• ${z.nombre}: ${money(zdoc(q,z))}`).join('\n');
-  return `*${S.config.negocio}*\nCotización ${q.folio}${q.cliente.nombre?'\nCliente: '+q.cliente.nombre:''}${q.titulo?'\n'+q.titulo:''}\n\n${lin}\n\n*TOTAL: ${money(t.total)}*\nVigencia: ${S.config.vigencia} días\n\n${q.supuestos}`;
+  return `*${S.config.negocio}*\nCotización ${folioOpc(q,activeOpt(q))}${q.opciones.length>1?' ('+activeOpt(q).nombre+')':''}${q.cliente.nombre?'\nCliente: '+q.cliente.nombre:''}${q.titulo?'\n'+q.titulo:''}\n\n${lin}\n\n*TOTAL: ${money(t.total)}*\nVigencia: ${S.config.vigencia} días\n\n${q.supuestos}`;
 }
 function download(name,text){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'application/json'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
 
@@ -1039,8 +1075,12 @@ const ACT = {
     const q=curQ(), L=lev(q), a=L.areas.find(x=>x.id===b.dataset.a), z=q.zonas.find(z=>z.areaId===a.id);
     if(!confirm('¿Quitar “'+a.nombre+'”?'+(z&&z.lineas.length?' También se quitarán sus '+z.lineas.length+' conceptos de la cotización.':''))) return;
     (a.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); (a.audios||[]).forEach(au=>{ fotoDel(au.id); S.fotosDel.push(q.id+'/'+au.id+'.'+au.ext); });
-    L.areas=L.areas.filter(x=>x.id!==a.id); if(z) q.zonas=q.zonas.filter(x=>x.id!==z.id);
-    if(!q.zonas.length) q.zonas.push({id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''});
+    L.areas=L.areas.filter(x=>x.id!==a.id); 
+    q.opciones.forEach(o=>{
+      o.zonas.filter(x=>x.areaId===a.id).forEach(zz=>zz.lineas.forEach(l=>(l.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })));
+      o.zonas=o.zonas.filter(x=>x.areaId!==a.id);
+      if(!o.zonas.length) o.zonas.push({id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''});
+    });
     save(); render(true);
   },
   addex(b){ const a=lev(curQ()).areas.find(x=>x.id===b.dataset.a); (a.extras=a.extras||[]).push({id:uid(),etiqueta:'',valor:'',unidad:'m'}); save(); render(true); },
@@ -1077,6 +1117,28 @@ const ACT = {
     if(a) a.audios=lista.filter(x=>x.id!==au.id); else L.audios=lista.filter(x=>x.id!==au.id);
     fotoDel(au.id); S.fotosPend=S.fotosPend.filter(x=>x.id!==au.id); S.fotosDel.push(q.id+'/'+au.id+'.'+au.ext); save(); render(true);
   },
+  selopc(b){ const q=curQ(); opcActiva[q.id]=b.dataset.o; render(); },
+  addopc(){
+    modal(`<div class="mh"><h2>Nueva cotización</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+     <button class="btn big" data-act="opcnew" data-c="0">📄 En blanco (con las áreas del levantamiento)</button>
+     <button class="btn big" data-act="opcnew" data-c="1">📑 Copiar la que estoy editando</button>
+     <p class="mut">Sirve para ofrecer una opción básica y una premium, o para guardar una versión nueva cuando el cliente negocia.</p>`);
+  },
+  opcnew(b){
+    const q=curQ(), act=activeOpt(q), copiar=b.dataset.c==='1';
+    const letra=LETRAS.find(x=>!q.opciones.some(o=>o.letra===x))||'Z';
+    const o={id:uid(),letra,nombre:'Opción '+letra,estado:'borrador',zonas:[],imprevistos:act.imprevistos,descuento:copiar?act.descuento:0,supuestos:act.supuestos};
+    if(copiar){ o.zonas=JSON.parse(JSON.stringify(act.zonas)); o.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); }); }
+    q.opciones.push(o); opcActiva[q.id]=o.id; if(!copiar) crearZonasDeAreas(q);
+    colapsadas.clear(); tabProy[q.id]='cot'; save(); closeModal(); render(); toast('Cotización '+folioOpc(q,o)+' creada');
+  },
+  delopc(){
+    const q=curQ(), o=activeOpt(q);
+    if(q.opciones.length<2){ toast('El proyecto debe tener al menos una cotización'); return; }
+    if(!confirm('¿Quitar “'+o.nombre+'” ('+folioOpc(q,o)+')? No se puede deshacer.')) return;
+    o.zonas.forEach(z=>z.lineas.forEach(l=>(l.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); })));
+    q.opciones=q.opciones.filter(x=>x.id!==o.id); delete opcActiva[q.id]; recalcEstado(q); save(); render();
+  },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
   dell(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z); (z.lineas.find(l=>l.id===b.dataset.l)?.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
   addfoto(b){
@@ -1088,16 +1150,16 @@ const ACT = {
   fotocam(){ closeModal(); $('#foto-cam').click(); },
   fotogal(){ closeModal(); $('#foto-in').click(); },
   delfoto(b){ const q0=curQ(), z=q0.zonas.find(z=>z.id===b.dataset.z), ln=(z&&b.dataset.l)?z.lineas.find(l=>l.id===b.dataset.l):null; if(b.dataset.gen) lev(q0).fotos=(lev(q0).fotos||[]).filter(f=>f!==b.dataset.f); else if(b.dataset.a){ const a=lev(q0).areas.find(x=>x.id===b.dataset.a); a.fotos=(a.fotos||[]).filter(f=>f!==b.dataset.f); } else if(ln) ln.fotos=(ln.fotos||[]).filter(f=>f!==b.dataset.f); else z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
-  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); });
-    if(c.lev){ c.lev.fotos=[]; c.lev.audios=[]; c.lev.areas.forEach(a=>{ a.fotos=[]; a.audios=[]; }); } S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
-  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); [...q.zonas.flatMap(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])]),...levOf(q).areas.flatMap(a=>a.fotos||[]),...(levOf(q).fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); });
+  dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.opciones.forEach(o=>{ o.id=uid(); o.estado='borrador'; delete o.motivo; o.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); }); });
+    if(c.lev){ c.lev.fotos=[]; c.lev.audios=[]; c.lev.areas.forEach(a=>{ a.fotos=[]; a.audios=[]; }); } armar(c); S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
+  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); [...q.opciones.flatMap(o=>o.zonas.flatMap(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])])),...levOf(q).areas.flatMap(a=>a.fotos||[]),...(levOf(q).fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); });
   [...levOf(q).areas.flatMap(a=>a.audios||[]),...(levOf(q).audios||[])].forEach(au=>{ fotoDel(au.id); S.fotosDel.push(q.id+'/'+au.id+'.'+au.ext); }); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
-  motivo(b){ const q=curQ(); q.estado='rechazada'; q.motivo=b.dataset.m; save(); closeModal(); render(true); },
+  motivo(b){ const q=curQ(), o=activeOpt(q); o.estado='rechazada'; o.motivo=b.dataset.m; recalcEstado(q); save(); closeModal(); render(true); },
   cerrar(){
     const q=curQ(); const reales={};
     document.querySelectorAll('.real').forEach(i=>{ if(i.value!=='' && !isNaN(parseFloat(i.value))) reales[i.dataset.l]=parseFloat(i.value); });
     q.cierre={fecha:new Date().toISOString(),reales,extras:parseFloat($('#extras').value)||0};
-    q.estado='terminada';
+    activeOpt(q).estado='terminada'; recalcEstado(q);
     let r={cambios:[],imp:null};
     if(S.config.aprendizaje) r=aprender(q); else q.cierre.resumen={estCosto:0,realCosto:0,desv:0};
     save();
@@ -1156,13 +1218,14 @@ document.addEventListener('change',e=>{
     S.config[t.dataset.cfg]=v; save();
   } else if(t.dataset.zname){ curQ().zonas.find(z=>z.id===t.dataset.zname).nombre=t.value; save(); }
   else if(t.dataset.znota){ curQ().zonas.find(z=>z.id===t.dataset.znota).notas=t.value; save(); }
-  else if(t.dataset.aname){ const q=curQ(), a=lev(q).areas.find(x=>x.id===t.dataset.aname); a.nombre=t.value; const z=q.zonas.find(z=>z.areaId===a.id); if(z) z.nombre=t.value; save(); }
+  else if(t.dataset.aname){ const q=curQ(), a=lev(q).areas.find(x=>x.id===t.dataset.aname); a.nombre=t.value; q.opciones.forEach(o=>{ const z=o.zonas.find(z=>z.areaId===a.id); if(z) z.nombre=t.value; }); save(); }
   else if(t.dataset.anota){ lev(curQ()).areas.find(x=>x.id===t.dataset.anota).notas=t.value; save(); }
   else if(t.dataset.gnota){ lev(curQ()).notas=t.value; save(); }
+  else if(t.dataset.opname){ const q=curQ(); q.opciones.find(o=>o.id===t.dataset.opname).nombre=t.value; save(); render(true); }
   else if(t.id==='estado-sel'){
-    const q=curQ();
-    if(t.value==='rechazada'){ modal(`<div class="mh"><h2>¿Por qué se perdió?</h2><button class="chip" data-act="mclose">Cancelar</button></div>${['Precio','Tiempo','Eligió a otro','Sin respuesta','Otro'].map(m=>`<button class="btn" data-act="motivo" data-m="${m}">${m}</button>`).join('')}`); t.value=q.estado; return; }
-    q.estado=t.value; save(); render(true);
+    const q=curQ(), o=activeOpt(q);
+    if(t.value==='rechazada'){ modal(`<div class="mh"><h2>¿Por qué se perdió?</h2><button class="chip" data-act="mclose">Cancelar</button></div>${['Precio','Tiempo','Eligió a otro','Sin respuesta','Otro'].map(m=>`<button class="btn" data-act="motivo" data-m="${m}">${m}</button>`).join('')}`); t.value=o.estado; return; }
+    setEstadoOpc(q,o,t.value); if(t.value==='aceptada'&&q.opciones.length>1) toast('Las demás cotizaciones pendientes se marcaron como rechazadas'); save(); render(true);
   } else if(t.id==='foto-in'||t.id==='foto-cam'){ subirFotos(t.files); t.value=''; }
   else if(t.id==='audio-in'){ audioArchivo(t.files[0]); t.value=''; }
   else if(t.dataset.rol){ cambiarRol(t); }

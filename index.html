@@ -45,6 +45,8 @@ textarea{min-height:90px;resize:vertical}
 .tabs button.on{background:var(--pri);color:var(--pri-ink);border-color:var(--pri)}
 .lev-info{background:var(--soft);border-radius:10px;padding:10px;margin-bottom:10px;font-size:14px}
 .medida{font-size:18px}
+.aud{margin:8px 0}
+.aud audio{width:100%;height:40px}
 .exrow{display:grid;grid-template-columns:minmax(0,1fr) 76px 68px 44px;gap:6px;margin-bottom:6px;align-items:center}
 .exrow input,.exrow select{width:100%;min-width:0;margin:0;padding:10px 8px}
 .exrow input[type=number]{text-align:right}
@@ -152,6 +154,7 @@ ul.tight li{margin-bottom:4px}
 <div id="toast"></div>
 <input type="file" id="foto-in" accept="image/*" multiple hidden>
 <input type="file" id="foto-cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="audio-in" accept="audio/*" hidden>
 
 <script src="supabase.js"></script>
 <script>
@@ -297,7 +300,7 @@ async function push(){
     const d=await idbGet(f.id);
     if(!d){ S.fotosPend=S.fotosPend.filter(x=>x!==f); continue; }
     const blob=await (await fetch(d)).blob();
-    const r=await sb.storage.from('fotos').upload(f.cot+'/'+f.id+'.jpg',blob,{contentType:'image/jpeg',upsert:true});
+    const r=await sb.storage.from('fotos').upload(f.cot+'/'+f.id+'.'+(f.ext||'jpg'),blob,{contentType:f.mime||'image/jpeg',upsert:true});
     if(r.error&&!isPerm(r.error)) throw r.error;
     S.fotosPend=S.fotosPend.filter(x=>x!==f);
   }
@@ -401,11 +404,11 @@ const idb = new Promise((res,rej)=>{
 async function fotoPut(id,data){ const db = await idb; return new Promise((res,rej)=>{ const t = db.transaction('f','readwrite'); t.objectStore('f').put(data,id); t.oncomplete=res; t.onerror=()=>rej(t.error); }); }
 async function idbGet(id){ try{ const db = await idb; return await new Promise((res,rej)=>{ const r = db.transaction('f').objectStore('f').get(id); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }catch(e){ return null; } }
 async function fotoDel(id){ try{ const db = await idb; db.transaction('f','readwrite').objectStore('f').delete(id); }catch(e){} }
-async function fotoGet(id,cot){
+async function fotoGet(id,cot,ext){
   const d = await idbGet(id); if(d) return d;
   if(!cot||!ME||!navigator.onLine) return null;
   try{
-    const {data,error} = await sb.storage.from('fotos').download(cot+'/'+id+'.jpg'); if(error||!data) return null;
+    const {data,error} = await sb.storage.from('fotos').download(cot+'/'+id+'.'+(ext||'jpg')); if(error||!data) return null;
     const url = await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(data); });
     await fotoPut(id,url); return url;
   }catch(e){ return null; }
@@ -538,6 +541,7 @@ function infoArea(q,ar,z,ro){
   return `<div class="lev-info"><div><b>${T.ic} Levantamiento:</b> ${resumenHtml(ar)}</div>
    ${ar.notas?`<div style="white-space:pre-wrap;margin-top:4px">${esc(ar.notas)}</div>`:''}
    ${f.length?`<div class="fotos">${f.map(x=>`<div><img data-foto="${x}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}
+   ${audiosHtml(q,ar.audios,false,'')}
    ${ro?'':`<button class="btn" style="margin:8px 0 0" data-act="paqarea" data-z="${z.id}">⚡ Cotizar con estas medidas</button>`}</div>`;
 }
 function etapa(q){ return tabProy[q.id] || (q.zonas.some(z=>z.lineas.length)?'cot':'lev'); }
@@ -565,9 +569,10 @@ function render(keep){
   document.querySelectorAll('nav.bottom a').forEach(a=>a.classList.toggle('on',a.dataset.nav===(['cot','doc','cierre'].includes(v)?'cots':v)));
   $('#nav').style.display = v==='doc'?'none':'';
   const lc=document.querySelector('nav.bottom a[data-nav="cat"]'); if(lc) lc.style.display = alb?'none':'';
-  hydrateFotos();
+  hydrateFotos(); hydrateAudios();
   window.scrollTo(0, keep?y:0);
 }
+async function hydrateAudios(){ for(const el of document.querySelectorAll('audio[data-audio]')){ const d=await fotoGet(el.dataset.audio, el.dataset.cot, el.dataset.ext); if(d) el.src=d; } }
 async function hydrateFotos(){ for(const im of document.querySelectorAll('img[data-foto]')){ const d = await fotoGet(im.dataset.foto, im.dataset.cot); if(d) im.src=d; } }
 window.addEventListener('hashchange',()=>{ closeModal(); render(); });
 
@@ -645,7 +650,7 @@ function vZona(q,z){
 function vArea(q,a){
   const T=TIPOS[a.tipo]||TIPOS.otro, col=colapsadas.has('a'+a.id), fo=a.fotos||[];
   const cab=`<div class="zhead"><button class="ib" data-act="toggle" data-z="a${a.id}" title="Plegar o abrir">${col?'▸':'▾'}</button><input data-aname="${a.id}" value="${esc(a.nombre)}"><span style="font-size:24px">${T.ic}</span></div>`;
-  if(col) return `<section class="card" id="a-${a.id}">${cab}<div class="mut" style="font-size:14px">${resumenHtml(a)} · ${fo.length} foto(s)</div></section>`;
+  if(col) return `<section class="card" id="a-${a.id}">${cab}<div class="mut" style="font-size:14px">${resumenHtml(a)} · ${fo.length} foto(s)${(a.audios||[]).length?' · '+a.audios.length+' audio(s)':''}</div></section>`;
   const campos=T.campos.length?`<div class="grid2">${T.campos.map(([k,l])=>`<label>${l}<input class="medida" type="number" inputmode="decimal" step="any" data-a="${a.id}" data-k="${k}" value="${(a.med||{})[k]??''}"></label>`).join('')}</div>`:'<p class="mut" style="margin-top:0">Usa “+ Otra medida” para anotar lo que midas aquí.</p>';
   const ex=(a.extras||[]).map(e=>`<div class="exrow"><input data-ex="${a.id}|${e.id}|etiqueta" value="${esc(e.etiqueta)}" placeholder="Qué mides"><input data-ex="${a.id}|${e.id}|valor" type="number" inputmode="decimal" step="any" value="${e.valor}" placeholder="0"><select data-ex="${a.id}|${e.id}|unidad">${['m','m²','ml','pza'].map(u=>`<option ${u===e.unidad?'selected':''}>${u}</option>`).join('')}</select><button class="ib" data-act="delex" data-a="${a.id}" data-e="${e.id}" title="Quitar">✕</button></div>`).join('');
   return `<section class="card" id="a-${a.id}">${cab}
@@ -653,7 +658,8 @@ function vArea(q,a){
    <button class="btn sm" data-act="addex" data-a="${a.id}">+ Otra medida</button>
    <div class="lev-info" style="margin-top:8px">Calculado: <span id="ares-${a.id}">${resumenHtml(a)}</span></div>
    ${fo.length?`<div class="fotos">${fo.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-a="${a.id}" data-f="${f}">✕</button></div>`).join('')}</div>`:''}
-   <div class="lact"><button class="btn btn-primary" data-act="addfoto" data-a="${a.id}">📷 Foto${fo.length?' ('+fo.length+')':''}</button></div>
+   ${audiosHtml(q,a.audios,true,'data-a="'+a.id+'"')}
+   <div class="lact"><button class="btn btn-primary" data-act="addfoto" data-a="${a.id}">📷 Foto${fo.length?' ('+fo.length+')':''}</button><button class="btn" data-act="addaudio" data-a="${a.id}">🎙 Audio${(a.audios||[]).length?' ('+a.audios.length+')':''}</button></div>
    <label style="margin-top:10px">Notas de esta área (estado, humedad, lo que pide el cliente…)<textarea data-anota="${a.id}" placeholder="Ej. Muro con humedad en la esquina; el cliente quiere conservar la protección">${esc(a.notas||'')}</textarea></label>
    <button class="btn btn-danger sm" data-act="delarea" data-a="${a.id}">Quitar área</button></section>`;
 }
@@ -669,7 +675,8 @@ function vLev(q){
   h+=`<button class="btn btn-primary" data-act="addarea">+ Agregar área</button>
    <section class="card"><h2>Fotos generales y notas</h2>
    ${(L.fotos||[]).length?`<div class="fotos">${L.fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"><button data-act="delfoto" data-gen="1" data-f="${f}">✕</button></div>`).join('')}</div>`:''}
-   <div class="lact"><button class="btn" data-act="addfoto" data-gen="1">📷 Foto general (fachada, acceso…)</button></div>
+   ${audiosHtml(q,L.audios,true,'data-gen="1"')}
+   <div class="lact"><button class="btn" data-act="addfoto" data-gen="1">📷 Foto general</button><button class="btn" data-act="addaudio" data-gen="1">🎙 Audio general</button></div>
    <label style="margin-top:10px">Notas generales (acceso, horarios, materiales que ya tiene el cliente…)<textarea data-gnota="1">${esc(L.notas||'')}</textarea></label></section>`;
   return h;
 }
@@ -796,7 +803,8 @@ function vObra(q){
   <section class="card"><h2>${esc(q.cliente.nombre||'Cliente')}</h2><div>${esc(q.titulo)}</div><div class="mut">${esc(q.cliente.dir)}</div>
   ${q.cliente.tel?`<a class="btn" style="margin-top:10px" href="tel:${esc(q.cliente.tel)}">Llamar al cliente</a>`:''}
   ${levOf(q).notas?`<p style="white-space:pre-wrap;margin-bottom:0">${esc(levOf(q).notas)}</p>`:''}
-  ${(levOf(q).fotos||[]).length?`<div class="fotos">${levOf(q).fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}</section>${zonas}`;
+  ${(levOf(q).fotos||[]).length?`<div class="fotos">${levOf(q).fotos.map(f=>`<div><img data-foto="${f}" data-cot="${q.id}" alt="Foto"></div>`).join('')}</div>`:''}
+  ${audiosHtml(q,levOf(q).audios,false,'')}</section>${zonas}`;
 }
 function vEquipo(){
   const op=['pendiente','cotizador','albanil'];
@@ -840,7 +848,7 @@ function vLog(){
 
 /* ================= Modales ================= */
 function modal(html){ const m=$('#modal'); m.innerHTML=`<div class="sheet">${html}</div>`; m.classList.add('on'); }
-function closeModal(){ const m=$('#modal'); m.classList.remove('on'); m.innerHTML=''; }
+function closeModal(){ audioAbort(); const m=$('#modal'); m.classList.remove('on'); m.innerHTML=''; }
 $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeModal(); });
 
 function pickConcept(zid){
@@ -889,6 +897,51 @@ function paqForm(zid,pid){
    ${p.params.map(x=>`<label>${esc(x.l)}<input id="pp-${x.k}" type="number" inputmode="decimal" step="any" value="${pre[x.k]??x.d}"></label>`).join('')}
    <label>¿Cuántas piezas iguales? (1 si es solo una)<input id="pp-cant" type="number" inputmode="numeric" min="1" step="1" value="${pre.cant||1}"></label>
    <button class="btn btn-primary" data-act="paqadd" data-p="${pid}" data-z="${zid}">Agregar a la cotización</button>`);
+}
+
+/* ================= Notas de voz ================= */
+let rec=null, audioCtx=null, audioPrev=null;
+const fmtDur = s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+function audioAbort(){
+  if(!rec) { audioPrev=null; return; }
+  try{ rec.mr.onstop=null; if(rec.mr.state!=='inactive') rec.mr.stop(); }catch(e){}
+  try{ rec.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  clearInterval(rec.timer); rec=null; audioPrev=null;
+}
+function modalAudio(){
+  const puede=!!(window.MediaRecorder&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+  modal(`<div class="mh"><h2>🎙 Nota de voz</h2><button class="chip" data-act="mclose">Cerrar</button></div>
+   <div style="text-align:center"><div id="rec-t" style="font-size:44px;font-weight:700;margin:10px 0">0:00</div>
+   <div id="rec-prev"></div>
+   ${puede?'<button class="btn btn-primary big" id="rec-btn" data-act="audiogo">🎙 Empezar a grabar</button>':''}
+   <p class="mut" id="rec-msg" style="margin-top:0">${puede?'Hasta 3 minutos. Habla cerca del micrófono.':'Este navegador no puede grabar desde la app. Elige un audio de tu celular.'}</p>
+   <button class="btn" data-act="audiofile">Elegir un audio de mi celular</button></div>`);
+}
+function audioStop(){
+  if(!rec) return; clearInterval(rec.timer);
+  try{ rec.mr.stop(); }catch(e){}
+  try{ rec.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+}
+function audioListo(){
+  const dur=Math.round((Date.now()-rec.t0)/1000), mime=rec.mime||'audio/webm', blob=new Blob(rec.chunks,{type:mime});
+  audioPrev={blob,dur,mime}; rec=null;
+  const p=$('#rec-prev'); if(!p) return;
+  p.innerHTML=`<audio controls src="${URL.createObjectURL(blob)}" style="width:100%;margin-bottom:10px"></audio><div class="btns" style="margin-bottom:12px"><button class="btn btn-primary" data-act="audiosave">Guardar</button><button class="btn" data-act="audiodiscard">Descartar</button></div>`;
+  const b=$('#rec-btn'); if(b) b.textContent='🎙 Grabar otra vez';
+  const m=$('#rec-msg'); if(m){ m.style.color=''; m.textContent='Escúchala y guárdala.'; }
+}
+const extDe = mime=>mime.includes('mp4')||mime.includes('m4a')||mime.includes('aac')?'m4a':mime.includes('ogg')?'ogg':mime.includes('mpeg')?'mp3':mime.includes('wav')?'wav':'webm';
+function aDataUrl(blob){ return new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); }); }
+async function guardarAudio(q,meta,dataUrl){
+  const id='au_'+uid(); await fotoPut(id,dataUrl);
+  const reg={id,dur:meta.dur,mime:meta.mime,ext:meta.ext,t:new Date().toISOString()};
+  if(audioCtx&&audioCtx.gen){ const L=lev(q); (L.audios=L.audios||[]).push(reg); }
+  else { const a=lev(q).areas.find(x=>x.id===(audioCtx&&audioCtx.a)); if(!a) return false; (a.audios=a.audios||[]).push(reg); }
+  S.fotosPend.push({id,cot:q.id,ext:meta.ext,mime:meta.mime}); save(); return true;
+}
+function audiosHtml(q,lista,borrar,attrs){
+  return (lista||[]).map(au=>`<div class="aud"><audio controls preload="none" data-audio="${au.id}" data-cot="${q.id}" data-ext="${au.ext}"></audio>
+   <div class="mut" style="font-size:12px;display:flex;justify-content:space-between;align-items:center"><span>🎙 ${au.dur?fmtDur(au.dur)+' · ':''}${fechaTxt(au.t)}</span>${borrar?`<button class="ib" style="width:36px;height:36px" data-act="delaudio" ${attrs} data-id="${au.id}" title="Borrar audio">✕</button>`:''}</div></div>`).join('');
 }
 
 /* ================= Acciones ================= */
@@ -985,7 +1038,7 @@ const ACT = {
   delarea(b){
     const q=curQ(), L=lev(q), a=L.areas.find(x=>x.id===b.dataset.a), z=q.zonas.find(z=>z.areaId===a.id);
     if(!confirm('¿Quitar “'+a.nombre+'”?'+(z&&z.lineas.length?' También se quitarán sus '+z.lineas.length+' conceptos de la cotización.':''))) return;
-    (a.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); });
+    (a.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); (a.audios||[]).forEach(au=>{ fotoDel(au.id); S.fotosDel.push(q.id+'/'+au.id+'.'+au.ext); });
     L.areas=L.areas.filter(x=>x.id!==a.id); if(z) q.zonas=q.zonas.filter(x=>x.id!==z.id);
     if(!q.zonas.length) q.zonas.push({id:uid(),nombre:'Zona 1',lineas:[],fotos:[],notas:''});
     save(); render(true);
@@ -995,6 +1048,35 @@ const ACT = {
   pasarcot(){ const q=curQ(), n=crearZonasDeAreas(q); tabProy[q.id]='cot'; save(); render(); if(n) toast(n+' área(s) pasaron a la cotización'); },
   paqarea(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z), a=areaDe(q,z), pid=PAQ_TIPO[a.tipo]; if(pid&&S.paquetes.some(p=>p.id===pid)) paqForm(z.id,pid); else pickPaquete(z.id); },
   usar(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.qty=num(b.dataset.v); save(); render(true); },
+  addaudio(b){ audioCtx={a:b.dataset.a||null,gen:!!b.dataset.gen}; modalAudio(); },
+  async audiogo(){
+    if(rec&&rec.mr.state==='recording'){ audioStop(); return; }
+    audioPrev=null; const pv=$('#rec-prev'); if(pv) pv.innerHTML='';
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+      const mr=new MediaRecorder(stream, mime?{mimeType:mime,audioBitsPerSecond:32000}:{audioBitsPerSecond:32000});
+      rec={mr,stream,chunks:[],t0:Date.now(),mime:(mr.mimeType||mime||'audio/webm').split(';')[0]};
+      mr.ondataavailable=e=>{ if(e.data&&e.data.size) rec.chunks.push(e.data); };
+      mr.onstop=audioListo; mr.start();
+      $('#rec-btn').textContent='⏹ Detener'; const m=$('#rec-msg'); m.style.color=''; m.textContent='Grabando…';
+      rec.timer=setInterval(()=>{ if(!rec) return; const sg=(Date.now()-rec.t0)/1000, t=$('#rec-t'); if(t) t.textContent=fmtDur(sg); if(sg>=180) audioStop(); },250);
+    }catch(e){ const m=$('#rec-msg'); if(m){ m.style.color='var(--bad)'; m.textContent='No pude usar el micrófono. Permite el micrófono para esta página en tu navegador, o elige un audio de tu celular.'; } }
+  },
+  async audiosave(){
+    if(!audioPrev) return; const q=curQ(); if(!q) return;
+    const {blob,dur,mime}=audioPrev, base=mime.split(';')[0];
+    const ok=await guardarAudio(q,{dur,mime:base,ext:extDe(base)},await aDataUrl(blob));
+    audioPrev=null; closeModal(); render(true); toast(ok?'Audio guardado':'No se pudo guardar el audio');
+  },
+  audiodiscard(){ audioPrev=null; const pv=$('#rec-prev'); if(pv) pv.innerHTML=''; const t=$('#rec-t'); if(t) t.textContent='0:00'; const m=$('#rec-msg'); if(m) m.textContent='Descartado. Puedes grabar de nuevo.'; },
+  audiofile(){ $('#audio-in').click(); },
+  delaudio(b){
+    const q=curQ(), L=lev(q), a=b.dataset.gen?null:L.areas.find(x=>x.id===b.dataset.a), lista=(a?a.audios:L.audios)||[], au=lista.find(x=>x.id===b.dataset.id);
+    if(!au||!confirm('¿Borrar este audio?')) return;
+    if(a) a.audios=lista.filter(x=>x.id!==au.id); else L.audios=lista.filter(x=>x.id!==au.id);
+    fotoDel(au.id); S.fotosPend=S.fotosPend.filter(x=>x.id!==au.id); S.fotosDel.push(q.id+'/'+au.id+'.'+au.ext); save(); render(true);
+  },
   opt(b){ const l=curQ().zonas.find(z=>z.id===b.dataset.z).lineas.find(l=>l.id===b.dataset.l); l.opcional=!l.opcional; save(); render(true); },
   dell(b){ const q=curQ(), z=q.zonas.find(z=>z.id===b.dataset.z); (z.lineas.find(l=>l.id===b.dataset.l)?.fotos||[]).forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); z.lineas=z.lineas.filter(l=>l.id!==b.dataset.l); save(); render(true); },
   addfoto(b){
@@ -1007,8 +1089,9 @@ const ACT = {
   fotogal(){ closeModal(); $('#foto-in').click(); },
   delfoto(b){ const q0=curQ(), z=q0.zonas.find(z=>z.id===b.dataset.z), ln=(z&&b.dataset.l)?z.lineas.find(l=>l.id===b.dataset.l):null; if(b.dataset.gen) lev(q0).fotos=(lev(q0).fotos||[]).filter(f=>f!==b.dataset.f); else if(b.dataset.a){ const a=lev(q0).areas.find(x=>x.id===b.dataset.a); a.fotos=(a.fotos||[]).filter(f=>f!==b.dataset.f); } else if(ln) ln.fotos=(ln.fotos||[]).filter(f=>f!==b.dataset.f); else z.fotos=z.fotos.filter(f=>f!==b.dataset.f); fotoDel(b.dataset.f); S.fotosDel.push(curQ().id+'/'+b.dataset.f+'.jpg'); S.fotosPend=S.fotosPend.filter(x=>x.id!==b.dataset.f); save(); render(true); },
   dup(){ const q=curQ(); const c=JSON.parse(JSON.stringify(q)); c.id=uid(); c.folio='C-nueva'; c.fecha=new Date().toISOString(); c.estado='borrador'; delete c.cierre; delete c.motivo; c.zonas.forEach(z=>{ z.id=uid(); z.fotos=[]; z.lineas.forEach(l=>{ l.id=uid(); l.fotos=[]; }); });
-    if(c.lev){ c.lev.fotos=[]; c.lev.areas.forEach(a=>{ a.fotos=[]; }); } S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
-  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); [...q.zonas.flatMap(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])]),...levOf(q).areas.flatMap(a=>a.fotos||[]),...(levOf(q).fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); }); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
+    if(c.lev){ c.lev.fotos=[]; c.lev.audios=[]; c.lev.areas.forEach(a=>{ a.fotos=[]; a.audios=[]; }); } S.cotizaciones.unshift(c); save(); location.hash='#/cot/'+c.id; toast('Copia creada (sin fotos)'); },
+  delcot(){ if(!confirm('¿Eliminar esta cotización? No se puede deshacer.')) return; const q=curQ(); [...q.zonas.flatMap(z=>[...z.fotos,...z.lineas.flatMap(l=>l.fotos||[])]),...levOf(q).areas.flatMap(a=>a.fotos||[]),...(levOf(q).fotos||[])].forEach(f=>{ fotoDel(f); S.fotosDel.push(q.id+'/'+f+'.jpg'); });
+  [...levOf(q).areas.flatMap(a=>a.audios||[]),...(levOf(q).audios||[])].forEach(au=>{ fotoDel(au.id); S.fotosDel.push(q.id+'/'+au.id+'.'+au.ext); }); S.cotizaciones=S.cotizaciones.filter(x=>x.id!==q.id); save(); location.hash='#/cots'; },
   motivo(b){ const q=curQ(); q.estado='rechazada'; q.motivo=b.dataset.m; save(); closeModal(); render(true); },
   cerrar(){
     const q=curQ(); const reales={};
@@ -1081,8 +1164,15 @@ document.addEventListener('change',e=>{
     if(t.value==='rechazada'){ modal(`<div class="mh"><h2>¿Por qué se perdió?</h2><button class="chip" data-act="mclose">Cancelar</button></div>${['Precio','Tiempo','Eligió a otro','Sin respuesta','Otro'].map(m=>`<button class="btn" data-act="motivo" data-m="${m}">${m}</button>`).join('')}`); t.value=q.estado; return; }
     q.estado=t.value; save(); render(true);
   } else if(t.id==='foto-in'||t.id==='foto-cam'){ subirFotos(t.files); t.value=''; }
+  else if(t.id==='audio-in'){ audioArchivo(t.files[0]); t.value=''; }
   else if(t.dataset.rol){ cambiarRol(t); }
 });
+async function audioArchivo(f){
+  const q=curQ(); if(!q||!f) return;
+  if(f.size>5*1024*1024){ toast('El audio pesa más de 5 MB'); return; }
+  const base=(f.type||'audio/mp4').split(';')[0], ok=await guardarAudio(q,{dur:0,mime:base,ext:extDe(base)},await aDataUrl(f));
+  closeModal(); render(true); toast(ok?'Audio guardado':'No se pudo guardar el audio');
+}
 async function cambiarRol(t){
   const {error}=await sb.from('perfiles').update({rol:t.value}).eq('id',t.dataset.rol);
   if(error){ toast('No se pudo cambiar el rol'); return; }
